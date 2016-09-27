@@ -1,0 +1,120 @@
+#!/usr/bin/env python
+
+from ising import ising,bitfield,KL,JSD
+from ising import Entropy
+import numpy as np
+import time
+import matplotlib.pyplot as plt
+
+size=15
+steps=500
+T=200
+
+Nactive=size-3
+x=ising(size)
+x.h=np.random.randn(size)*0.3
+#x.random_wiring()
+x.J=np.zeros((size,size))
+for i in np.arange(Nactive,size):
+	for j in np.arange(i+1,size):
+		x.J[i,j]=np.random.randn(1)/float(size)
+
+#x.energy()
+#x.HeatCapacity()
+
+
+#print x.HC
+x.HC=0
+x.pdf()
+P=x.P.copy()
+order=np.argsort(P)[::-1]
+
+r=np.arange(1,2**size+1)
+Psf = 1.0/(1+np.arange(2**size))
+Psf/=np.sum(Psf)
+
+plt.figure()
+plt.loglog(r,P[order])
+plt.loglog(r,Psf)
+
+KL1=KL(P[order],Psf)
+
+
+for rep in range(steps):
+#	hold=x.h.copy()
+#	Jold=x.J.copy()
+#	HCold=x.HC
+	
+
+#	for i in range(np.random.randint(1,5)):
+#	if np.random.rand(1)<0.4 and rep<100:
+#		x.random_rewire()
+#	x.random_wiring()
+	x.SOCstep(T)
+
+#	if HCold>x.HC:
+#		x.h=hold.copy()
+#		x.J=Jold.copy()
+#		x.HC=HCold
+	if rep%1==0:
+		print rep, x.HC
+#		x.energy()
+#		x.HeatCapacity()
+
+x.energy()
+x.HeatCapacity()
+
+
+x.pdf()
+P=x.P.copy()
+order=np.argsort(P)[::-1]
+
+plt.figure()
+plt.loglog(r,P[order])
+plt.loglog(r,Psf)
+
+plt.figure()
+plt.imshow(x.J,interpolation='nearest')
+plt.colorbar()
+
+print x.HC
+print x.h
+print x.J
+
+KL2=KL(P[order],Psf)
+
+print
+print 'KL divergences'
+print KL1,KL2
+
+r=np.arange(-1,1,0.05)
+HC=np.zeros(len(r))
+H=np.zeros(len(r))
+for i,r1 in enumerate(r):
+#	print i
+	x.Beta=10.0**r1
+	x.energy()
+	x.HeatCapacity()
+	HC[i] = x.HC
+	H[i]=x.Beta*x.Em + np.log(x.Z)
+
+
+plt.figure()
+plt.semilogx(10**-r,H)
+plt.ylabel(r'$H\qquad$',rotation=0, fontsize=20)
+plt.xlabel(r'$T$', fontsize=15)
+plt.figure()
+plt.semilogx(10**-r,HC)
+plt.ylabel(r'$C\qquad$',rotation=0, fontsize=20)
+plt.xlabel(r'$T$', fontsize=15)
+
+plt.figure()
+plt.hist(x.h, 5, normed=1, alpha=0.75)
+W=[]
+for i in range(size):
+	for j in np.arange(i+1,size):
+		W+=[x.J[i,j]]
+plt.figure()
+plt.hist(W, 10, normed=1, alpha=0.75)
+
+plt.show()
