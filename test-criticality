@@ -25,7 +25,7 @@ Psf/=np.sum(Psf)
 plt.figure()
 plt.loglog(r,P[order])
 plt.loglog(r,Psf)
-
+plt.title('Probability density function before learning')
 
 
 for rep in range(steps):
@@ -44,10 +44,12 @@ order=np.argsort(P)[::-1]
 plt.figure()
 plt.loglog(r,P[order])
 plt.loglog(r,Psf)
+plt.title('Probability density function after learning')
 
 plt.figure()
 plt.imshow(x.J,interpolation='nearest')
 plt.colorbar()
+plt.title('Connectivity matrix')
 
 print x.HC
 print x.h
@@ -69,10 +71,13 @@ plt.figure()
 plt.semilogx(10**-r,H)
 plt.ylabel(r'$H\qquad$',rotation=0, fontsize=20)
 plt.xlabel(r'$T$', fontsize=15)
+plt.title('Entropy of the network after system for different temperatures')
+
 plt.figure()
 plt.semilogx(10**-r,HC)
 plt.ylabel(r'$C\qquad$',rotation=0, fontsize=20)
 plt.xlabel(r'$T$', fontsize=15)
+plt.title('Heat capacity of the network after system for different temperatures')
 
 #plt.figure()
 #plt.hist(x.h, 5, normed=1, alpha=0.75)
