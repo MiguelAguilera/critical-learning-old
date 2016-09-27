@@ -59,7 +59,7 @@ class ising:
 			for j in np.arange(i+1,self.size):
 				self.C[i,j]-=self.m[i]*self.m[j]
 				
-	def inverse_exact(self,m1,C1,error,mode='gradient-descent'):	#Solve exact inverse ising problem with gradient descent
+	def inverse_exact(self,m1,C1,error):	#Solve exact inverse ising problem with gradient descent
 		u=0.1
 		count=0
 		self.independent_model(m1)
@@ -71,210 +71,21 @@ class ising:
 		
 		while fit>error:
 			
-			if mode=='gradient-descent':
-			
-				dh=u*(m1-self.m)
-				self.h+=dh
-				dJ=u*(C1-self.C)
-				self.J+=dJ
-			elif mode=='coordinated-descent':
-			
-#				beta=fit*0.001
-				beta=error**2
-				
-				def compF(d,p,ql,l,beta):
-					return -d*p +np.log(np.exp(-d) + (np.exp(d)-np.exp(-d))*(ql+1)*0.5)+beta*(np.abs(l+d)-np.abs(l))
+			dh=u*(m1-self.m)
+			self.h+=dh
+			dJ=u*(C1-self.C)
+			self.J+=dJ
 
-				def Fmin(p,ql,l,beta):
-					D=[]
-					for B in [1,-1]:
-						nden=(1+ql)*(1-p+B*beta)
-						if not nden==0:
-							nnum=(1-ql)*(1+p-B*beta)
-							if nnum/nden>0:
-								D1=0.5*np.log(nnum/nden)
-								if B*(l+D1)>0:
-									D+=[D1]
-					if len(D)==1:
-						return D[0]
-					else:
-#						print compF(-l,p,ql,l,beta)
-						print 'error',len(D)
-#						
-#						plt.figure()
-##						print l
-##						print ql,p
-#						d=np.arange(-2,2,0.001)
-#						plt.plot(d,compF(d,p,ql,l,beta))
-#						plt.show()
-						
-						exit(0)
-
-				inds=[]
-				p=[]
-				ql=[]
-				l=[]
-				for i in range(self.size):
-					inds+=[i]
-					p+=[m1[i]]
-					ql+=[self.m[i]]
-					l+=[self.h[i]]
-				for i in range(self.size):
-					for j in np.arange(i+1,self.size):
-						inds+=[(i,j)]
-						p+=[C1[i,j]]
-						ql+=[self.C[i,j]]
-						l+=[self.J[i,j]]
-				N=len(inds)
-				F=np.zeros(N)
-				d=np.zeros(N)
-				for i in range(len(inds)):
-					d[i]=Fmin(p[i],ql[i],l[i],beta)
-					F[i]=compF(d[i],p[i],ql[i],l[i],beta)
-
-				ind=np.argmin(F)
-	#			print ind
-				D=d[ind]
-
-#				for ind in range(len(inds)):
-				if ind<self.size:
-					self.h[inds[ind]]+=d[ind]*1
-				else:
-					self.J[inds[ind]]+=d[ind]*1
-
-#			
 			self.observables()
 			fit = max (np.max(np.abs(self.m-m1)),np.max(np.abs(self.C-C1)))
 			count+=1
 			if count%10==0:
 				print self.size,count,fit
 				
-#				print
-#				print F
-#				print d
-#				print ind
-#				
-#				print
-#				print (m1-self.m)
-#				print (C1-self.C)
-#				print self.h
-#				print self.J
-#				
-#				di=np.arange(D-1,D+1,0.001)
-#				plt.figure()
-#				plt.plot(di,-di*p[ind] + np.log(1+(np.exp(di)-1)*ql[ind])+error*(np.abs(l[ind]+di)-np.abs(l[ind])))
-#				plt.plot(D,-D*p[ind] + np.log(1+(np.exp(D)-1)*ql[ind])+error*(np.abs(l[ind]+D)-np.abs(l[ind])),'o')
-#				
-##				ind=2
-##				D=d[ind]
-##				di=np.arange(D-1,D+1,0.001)
-##				plt.figure()
-##				plt.plot(di,-di*p[ind] + np.log(1+(np.exp(di)-1)*ql[ind])+error*(np.abs(l[ind]+di)-np.abs(l[ind])))
-##				plt.plot(D,-D*p[ind] + np.log(1+(np.exp(D)-1)*ql[ind])+error*(np.abs(l[ind]+D)-np.abs(l[ind])),'o')
-#				plt.show()
 			
 		return fit
-				
-	def inverseMC(self,m1,C1,error):	#Solve inverse ising problem using Monte Carlo Samples
-
-		u=0.1
-		samples=200
-		nT=40
-
-		fit=1E10
-		fmin=fit
-		fitcount=0
-		self.independent_model(m1)
-#		Ps = self.MCsamples(samples)
-		PS=[]
-		fits=[]
-		for i in range(nT):
-			PS+=[self.MCsamples(samples)]
-			fits+=[fit]
-
-		count=0
-		while fit>error:
-			del PS[0]
-			PS+=[self.MCsamples(samples)]
-			Ps=PS[0]
-			for i in np.arange(1,nT):
-				Ps.update(PS[i])
-
-			ns=Ps.keys()
-			Pmc=Ps.values()
-			Pmc/=np.sum(Pmc)
-			self.observables_sample(ns,Pmc)
-	
-			dh=u*(m1-self.m)
-			self.h+=dh
-			dJ=u*(C1-self.C)
-			self.J+=dJ
-			fmin=np.min(fits)
-			del fits[0]
-			fit = max (np.max(np.abs(self.m-m1)),np.max(np.abs(self.C[np.abs(self.C)>0]-C1[np.abs(self.C)>0])))
-			fits+=[fit]
-			if fit/fmin<1:
-	#			fmin=fit
-				fitcount=0
-			else:
-				fitcount+=1
-				if fitcount>nT*2:
-					if len(Ps)/2.0**self.size<1:
-						samples+=samples/2
-					fitcount=0
-			if count%10==0:
-				print self.size,count,len(Ps)/2.0**self.size,samples,fit
-			count+=1
-	
-		return fit
 	
 	
-	def inverse_sampler(self,m1,C1,error):	#Solve inverse ising problem using Monte Carlo Samples
-
-		u=0.01
-
-		fit=1E10
-		fmin=fit
-		fitcount=0
-		T=10000
-		nT=40
-		count=0
-		while fit>error:
-			if count%nT==0:
-				samples=self.generateMCsample(T)
-				h0=self.h.copy()
-				J0=self.J.copy()
-				self.observables_sample(samples)
-				fit = max (np.max(np.abs(self.m-m1)),np.max(np.abs(self.C-C1)))
-			self.observables_recycled_samples(samples,h0,J0)
-##			print
-###			print m1-self.m
-			dh=u*(m1-self.m)
-#			print self.h-h0
-			self.h+=dh
-			dJ=u*(C1-self.C)
-			self.J+=dJ
-			fit1 = max (np.max(np.abs(self.m-m1)),np.max(np.abs(self.C-C1)))
-
-			if count%10==0:
-				print self.size,count,fit,fit1
-			count+=1
-	
-		return fit
-				
-	def MCsamples(self,samples):	#Generate a series of Monte Carlo samples
-		self.randomize_state()
-		# Main    simulation loop:
-		P={}
-		for t in range(samples):
-			self.MetropolisStep()
-			n=bool2int((self.s+1)/2)
-			if n<0:
-				print n
-				print ((self.s+1)/2)
-			P[n]=np.exp((np.dot(self.s,self.h) + np.dot(np.dot(self.s,self.J),self.s)))
-		return P
-		
 	def generateMCsample(self,T):	#Generate a series of Monte Carlo samples
 		self.randomize_state()
 		# Main simulation loop:
@@ -285,82 +96,10 @@ class ising:
 			n=bool2int((self.s+1)/2)
 			samples+=[n]
 		return samples
-
-	def observables_sample(self, samples):	#Get mean and correlations from system states sample
-		
-		ns,P=np.unique(samples,return_counts=True)
-		P=P.astype(float)
-		P/=np.sum(P)
-		self.m=np.zeros((self.size))
-		self.C=np.zeros((self.size,self.size))
-		for ind,n in enumerate(ns):
-			s=bitfield(n,self.size)*2-1
-			for i in range(self.size):
-				self.m[i]+=P[ind]*s[i]
-				for j in np.arange(i+1,self.size):
-					self.C[i,j]+=P[ind]*s[i]*s[j]
-		for i in range(self.size):
-			for j in np.arange(i+1,self.size):
-				self.C[i,j]-=self.m[i]*self.m[j]
 				
-					
-	def observables_recycled_samples(self, samples,h0,J0):	#Get 'recycled' mean and correlations from system states sample and new values of h and J
-
-		ns,P=np.unique(samples,return_counts=True)
-		P=P.astype(float)
-		P/=np.sum(P)
-		self.m=np.zeros((self.size))
-		self.C=np.zeros((self.size,self.size))
-		for ind,n in enumerate(ns):
-			s=bitfield(n,self.size)*2-1
-			Pdiff=np.exp((np.dot(s,(self.h-h0)) + np.dot(np.dot(s,(self.J-J0)),s)))
-			P1=P[ind]*Pdiff
-#			print self.J-J0
-#			print self.h-h0
-#			print 'pi',P[ind],'p1',P1,'pd',Pdiff
-			for i in range(self.size):
-				self.m[i]+=P1*s[i]
-				for j in np.arange(i+1,self.size):
-					self.C[i,j]+=P1*s[i]*s[j]
-		for i in range(self.size):
-			for j in np.arange(i+1,self.size):
-				self.C[i,j]-=self.m[i]*self.m[j]
-
-	def observables_energy(self):
-	
-		dh=np.zeros((self.size))
-		dJ=np.zeros((self.size,self.size))
-	
-		E=np.sum(self.E*self.P)
-		E2=np.sum(self.E**2*self.P)
-		
-		Esm=np.zeros(self.size)
-		E2sm=np.zeros(self.size)
-		m=np.zeros(self.size)
-		
-		
-		EsC=np.zeros((self.size,self.size))
-		E2sC=np.zeros((self.size,self.size))
-		C=np.zeros((self.size,self.size))
-		for n in range(2**self.size):
-			s=bitfield(n,self.size)*2-1
-			for i in range(self.size):
-				m[i]+=s[i]*self.P[n]
-				Esm[i]+=self.E[n]*s[i]*self.P[n]
-				E2sm[i]+=self.E[n]**2*s[i]*self.P[n]
-				for j in np.arange(i+1,self.size):
-					C[i,j]+=s[i]*s[j]*self.P[n]
-					EsC[i,j]+=self.E[n]*s[i]*s[j]*self.P[n]
-					E2sC[i,j]+=self.E[n]**2*s[i]*s[j]*self.P[n]
-		
 
 		
-		dh=m*(2*E+2*E**2-E2)-2*Esm*(1+E)+E2sm
-		dJ=C*(2*E+2*E**2-E2)-2*EsC*(1+E)+E2sC
-		
-		return dh,dJ
-		
-	def observables_gradient_SOC(self,T):
+	def CriticalGradient(self,T):
 	
 		
 		dh=np.zeros((self.size))
@@ -406,19 +145,11 @@ class ising:
 		
 		return dh,dJ
 
-	def observables_gradient_SOC_dynamic(self,T):
+	def DynamicalCriticalGradient(self,T):
 	
 		
 		dh=np.zeros((self.size))
 		dJ=np.zeros((self.size,self.size))
-		
-#		F=np.zeros(self.size)
-#		G=np.zeros(self.size)
-#		K=np.zeros(self.size)
-		
-#		dF=np.zeros(self.size)
-#		dG=np.zeros(self.size)
-#		dK=np.zeros(self.size)
 		
 		msH=np.zeros(self.size)
 		mF=np.zeros(self.size)
@@ -446,10 +177,6 @@ class ising:
 			n=bool2int((self.s+1)/2)
 			H= self.h + np.dot(self.s,self.J)+ np.dot(self.J,self.s)
 			F = H*np.tanh(H)-np.log(2*np.cosh(H))
-#			print
-#			print self.s
-#			print H
-#			print F
 			G = (H/np.cosh(H))**2 + self.s*H*F
 			dF = H/np.cosh(H)**2
 			dG = 2*H*(1-H*np.tanh(H))/np.cosh(H)**2 + self.s*F + self.s*H*dF
@@ -466,7 +193,6 @@ class ising:
 			mdGh+=dG/float(T)
 			ms2Hh+=H/float(T)
 			
-#			for i in range(self.size):
 			for j in range(self.size):
 				msJ[j,:]+=self.s*self.s[j]/float(T)
 				msFJ[j,:]+=self.s*self.s[j]*F/float(T)
@@ -474,127 +200,33 @@ class ising:
 				mdFJ[j,:]+=self.s[j]*dF/float(T)
 				mdGJ[j,:]+=self.s[j]*dG/float(T)
 				ms2HJ[j,:]+=self.s[j]*H/float(T)
-#					if not i==j:						
-#						msJ[j,i]+=self.s[i]*self.s[j]/float(T)
-#						msFJ[j,i]+=self.s[i]*self.s[j]*F[i]/float(T)
-#						msGJ[j,i]+=self.s[i]*self.s[j]*G[i]/float(T)
-#						mdFJ[j,i]+=self.s[j]*dF[i]/float(T)
-#						mdGJ[j,i]+=self.s[j]*dG[i]/float(T)
-#						ms2HJ[j,i]+=self.s[i]**2*self.s[j]*H[i]/float(T)
 			
 		dh = mdGh + msGh - msh*mG - (msh+ms2Hh-msh*msH)*mF - msH*(mdFh+msFh-msh*mF)
-#		dh =-msh
 		dJ1 = mdGJ + msGJ - msJ*mG - (msJ+ms2HJ-msJ*msH)*mF - msH*(mdFJ+msFJ-msJ*mF)
 		
-#		print np.max(np.abs(mdGJ)), np.max(np.abs(msGJ)), np.max(np.abs(msJ*mG)),np.max(np.abs((msJ+ms2HJ-msJ*msH)*mF)),np.max(np.abs(msH*(mdFJ+msFJ-msJ*mF)))
-
-				
-		Nactive=self.size-3
-		dh[Nactive:]=0
 		dJ=np.zeros((self.size,self.size))
-		for j in range(self.size):
-			for i in np.arange(Nactive):
-				if i>j:
-					dJ[j,i]+=dJ1[j,i]
-				elif j>i:
-					dJ[i,j]+=dJ1[j,i]
-#			for j in np.arange(i+1,self.size):
-#				dJ[i,j]=dJ1[i,j]+dJ1[j,i]
-#		dJ=dJ1
+		for i in range(self.size):
+			for j in np.arange(i+1,self.size):
+				dJ[i,j]=dJ1[i,j]+dJ1[j,i]
 
-		
+
 		self.HCl=mG-msH*mF
-		self.HC=np.sum(self.HCl[0:Nactive])
+		self.HC=np.sum(self.HCl)
 		
 		return dh,dJ
-
-#	def observables_gradient_SOC_local(self,T):
-#	
-#		
-#		dh=np.zeros((self.size))
-#		dJ=np.zeros((self.size,self.size))
-#	
-#		E=0
-#		E2=0
-#		Egm=0
-#		Eg2m=0
-#		
-#		Esm=np.zeros(self.size)
-#		E2sm=np.zeros(self.size)
-#		m=np.zeros(self.size)
-#		
-#		
-#		EsC=np.zeros((self.size,self.size))
-#		E2sC=np.zeros((self.size,self.size))
-#		C=np.zeros((self.size,self.size))
-#		
-#		self.randomize_state()
-#		# Main simulation loop:
-#		samples=[]
-#		for t in range(T):
-##			self.MetropolisStep()
-#			self.SequentialGlauberStep()
-#			n=bool2int((self.s+1)/2)
-#			Eg=-(np.dot(self.s,self.h) + np.dot(np.dot(self.s,self.J),self.s)) #Global energy
-#			Es= - self.s*self.h + np.dot(self.s,self.J)+ np.dot(self.J,self.s)  #Local energy
-#			E+=Es/T
-#			E2+=Es**2/T
-#			Egm+=Eg/T
-#			Eg2m+=Eg**2/T
-#			for i in range(self.size):
-#				m[i]+=self.s[i]/float(T)
-#				Esm[i]+=Es[i]*self.s[i]/float(T)
-#				E2sm[i]+=Es[i]**2*self.s[i]/float(T)
-#				for j in np.arange(i+1,self.size):
-#					C[i,j]+=self.s[i]*self.s[j]/float(T)
-#					EsC[i,j]+=Es[i]*self.s[i]*self.s[j]/float(T)
-#					E2sC[i,j]+=Es[i]**2*self.s[i]*self.s[j]/float(T)
-#		
-#		for i in range(self.size):
-#			dh[i]=m[i]*(2*E[i]+2*E[i]**2-E2[i])-2*Esm[i]*(1+E[i])+E2sm[i]
-#			for j in np.arange(i+1,self.size):
-#				dJ[i,j]=C[i,j]*(2*E[i]+2*E[i]**2-E2[i])-2*EsC[i,j]*(1+E[i])+E2sC[i,j]
-#		
-#		self.HC=np.sum(Eg2m-Egm**2)
-#		
-#		return dh,dJ
 		
-	def SOCstep(self,T):	
-#		self.energy()
+	def CriticalLearningStep(self,T,mode='dynamic'):	
+
 		u=0.004
 		u1=0.001
-		dh,dJ=self.observables_gradient_SOC_dynamic(T)
+		if mode=='static':
+			dh,dJ=self.CriticalGradient(T)
+		elif mode=='dynamic':
+			dh,dJ=self.DynamicalCriticalGradient(T)
 		
-#		dh1=self.h-np.mean(np.abs(self.h))
-#		dJ1=self.J-np.mean(np.abs(self.J))
 		self.h+=u*dh
 		self.J+=u*dJ
 		
-#		l1=0.0
-#		l2=0.00	
-#		self.h+=u*dh - l1*self.h
-#		self.J+=u*dJ - l2*self.J*self.size
-#		i=np.random.randint(self.size)
-#		self.h[i]+=u*dh[i]
-#		self.J[i,:]+=u*dJ[i,:]
-#		self.J[:,i]+=u*dJ[:,i]
-
-#		cost=np.zeros((self.size,self.size))
-#		for i in range(self.size):
-#			for j in np.arange(i+1,self.size):
-#				cost[i,j]=np.log(np.abs(i-j))
-#		self.h+=u*dh
-#		self.J+=u*dJ - cost*u1*np.sign(self.J)
-
-#		Nactive=4
-#		self.h[0:Nactive]+=u*dh[0:Nactive]
-#		for i in range(Nactive):
-#			self.J[i,i:]+=u*dJ[i,i:]
-		
-#		dh,dJ=self.observables_gradient_SOC(T)
-
-		
-				
 			
 	def MetropolisStep(self,i=None):	    #Execute step of Metropolis algorithm
 		if i is None:
@@ -732,166 +364,3 @@ def JSD(P,Q):
 	return 0.5*(KL(P,Q)+KL(Q,P))
 
 	
-def PCA(h,J):
-	size=len(h)
-	P=get_PDF(h,J,size)
-	m,C=observables(P,size)
-	C=0.5*(C+np.transpose(C))
-	w,v = np.linalg.eig(C)
-	return w,v
-	
-
-class kinetic_ising:
-	def __init__(self, netsize):	#Create ising model
-	
-		self.size=netsize
-		self.h=np.zeros(netsize)
-		self.J=np.zeros((netsize,netsize))
-		self.randomize_state()
-	
-	def randomize_state(self):
-		self.s = np.random.randint(0,2,self.size)*2-1
-		
-	def pdf(self):	#Get probability density function of ising model with parameters h, J
-		self.P=np.zeros(2**self.size)
-		for n in range(2**self.size):
-			s=bitfield(n,self.size)*2-1
-			E=np.dot(s,self.h) + np.dot(np.dot(s,self.J),s)
-			self.P[n]=np.exp(E)
-		self.P/=np.sum(self.P)
-		
-		
-	def pdfMC(self,T):	#Get mean and correlations from Monte Carlo simulation of the kinetic ising model
-		self.P=np.zeros(2**self.size)
-		self.randomize_state()
-		for t in range(T):
-			self.GlauberStep()
-			n=bool2int((self.s+1)/2)
-			self.P[n]+=1.0/float(T)
-
-	def random_wiring(self):	#Set random values for h and J
-		self.h=np.random.randn(self.size)*5
-		self.J=np.random.randn(self.size,self.size)*5
-#		self.J=np.zeros((self.size,self.size))
-#		for i in range(self.size):
-#			for j in np.arange(i+1,self.size):
-#				x=np.random.randn(1)
-#				self.J[i,j]=x
-#				self.J[j,i]=x
-				
-			
-	def GlauberStep(self):
-		s=self.s.copy()
-		for i in range(self.size):
-			eDiff = self.deltaE(s,i)
-			if np.random.rand(1) < 1.0/(1.0+np.exp(eDiff)):    # Glauber
-				self.s[i] = -self.s[i]
-		
-	def deltaE(self,s,i=None):
-		if i is None:
-			return 2*(s*self.h + s*np.dot(s,self.J) )
-		else:
-			return 2*(s[i]*self.h[i] + np.sum(s[i]*(self.J[:,i]*s)))
-		
-#	def observablesMC(self,T):	#Get mean and correlations from Monte Carlo simulation of the kinetic ising model
-#		self.m=np.zeros(self.size)
-#		self.C=np.zeros((self.size,self.size))
-#		self.D=np.zeros((self.size,self.size))
-#		self.P=np.zeros(2**self.size)
-#	
-#		self.randomize_state()
-#		for t in range(T):
-#			sp=self.s.copy()
-#			self.GlauberStep()
-#			n=bool2int((self.s+1)/2)
-#			self.P[n]+=1.0/float(T)
-#			
-#			self.m+=self.s/float(T)
-#			for i in range(self.size):
-#				for j in np.arange(i+1,self.size):
-#					self.C[i,j]+=self.s[i]*self.s[j]/float(T)
-#			for i in range(self.size):
-#				self.D[:,i]+=self.s[i]*sp/float(T)
-##				eDiff = self.deltaE(self.s,i)
-##				pflip = 1.0/(1.0+np.exp(eDiff))
-##				self.D[:,i]+=(self.s[i]*self.s*(1-pflip) - self.s[i]*self.s*pflip)/float(T)
-				
-		for i in range(self.size):
-			for j in np.arange(i+1,self.size):
-				self.C[i,j]-=self.m[i]*self.m[j]
-		for i in range(self.size):
-			for j in range(self.size):
-				self.D[i,j]-=self.m[i]*self.m[j]
-			
-	def observables(self):	#Get mean and correlations from Monte Carlo simulation of the kinetic ising model
-		self.m=np.zeros(self.size)
-		self.D=np.zeros((self.size,self.size))
-		N=float(2**self.size)
-		for n in range(2**self.size):
-			s=bitfield(n,self.size)*2-1
-			for i in range(self.size):
-#				self.m[i]+=s[i]*self.P[n]
-				eDiff = self.deltaE(s,i)
-				pflip = 1.0/(1.0+np.exp(eDiff))
-				self.D[:,i]+=(s[i]*s*(1-pflip) - s[i]*s*pflip)*self.P[n]
-				self.m[i]+=(s[i]*(1-pflip) - s[i]*pflip)*self.P[n]
-		for i in range(self.size):
-			for j in range(self.size):
-				self.D[i,j]-=self.m[i]*self.m[j]
-
-	def observables_sample(self,sample):	#Get mean and correlations from Monte Carlo simulation of the kinetic ising model
-		self.m=np.zeros(self.size)
-		self.D=np.zeros((self.size,self.size))
-		ns,P=np.unique(sample,return_counts=True)
-		P=P.astype(float)
-		P/=np.sum(P)
-		for ind,n in enumerate(ns):
-			s=bitfield(n,self.size)*2-1
-			eDiff = self.deltaE(s)
-			pflip=1.0/(1.0+np.exp(eDiff))
-			self.m+= (s*(1-2*pflip))*P[ind]
-			d1, d2 = np.meshgrid(s*(1-2*pflip),s)
-			self.D+= d1*d2*P[ind]
-#			for i in range(self.size):
-#				eDiff = self.deltaE(s,i)
-#				pflip = 1.0/(1.0+np.exp(eDiff))
-#				self.D[:,i]+=(s[i]*s*(1-2*pflip))*P[ind]
-#				self.m[i]+=(s[i]*(1-2*pflip))*P[ind]
-		for i in range(self.size):
-			for j in range(self.size):
-				self.D[i,j]-=self.m[i]*self.m[j]
-				
-
-	def generate_sample(self,T):	#Generate a series of Monte Carlo samples
-		self.randomize_state()
-		samples=[]
-		for t in range(T):
-			self.GlauberStep()
-			n=bool2int((self.s+1)/2)
-			samples+=[n]
-		return samples
-		
-		
-	def independent_model(self, m):		#Set h to match an independen models with means m
-		self.h=np.zeros((self.size))
-		for i in range(self.size):
-			self.h[i]=-0.5*np.log((1-m[i])/(1+m[i]))
-		self.J=np.zeros((self.size,self.size))
-		
-	def inverse(self,m1,D1, error,sample):
-		u=0.1
-		count=0
-		self.observables_sample(sample)
-		fit = max (np.max(np.abs(self.m-m1)),np.max(np.abs(self.D-D1)))
-		
-		while fit>error:
-			self.observables_sample(sample)
-			dh=u*(m1-self.m)
-			self.h+=dh
-			dJ=u*(D1-self.D)
-			self.J+=dJ
-			fit = max (np.max(np.abs(self.m-m1)),np.max(np.abs(self.D-D1)))
-			if count%10==0:
-				print self.size,count,fit
-			count+=1
-		return fit
