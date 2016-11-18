@@ -9,7 +9,7 @@ class ising:
 		self.h=np.zeros(netsize)
 		self.J=np.zeros((netsize,netsize))
 		self.randomize_state()
-		self.Beta=1
+		self.Beta=1.0
 	
 	def randomize_state(self):
 		self.s = np.random.randint(0,2,self.size)*2-1
