@@ -51,14 +51,16 @@ class ising:
 		self.C=np.zeros((self.size,self.size))
 		for n in range(2**self.size):
 			s=bitfield(n,self.size)*2-1
-			self.m+=self.P[n]*s
 			for i in range(self.size):
-				self.C[i,i+1:]+=self.P[n]*s[i]*s[i+1:]
+				self.m[i]+=self.P[n]*s[i]
+				for j in np.arange(i+1,self.size):
+					self.C[i,j]+=self.P[n]*s[i]*s[j]
 		for i in range(self.size):
-			self.C[i,i+1:]-=self.m[i]*self.m[i+1:]
+			for j in np.arange(i+1,self.size):
+				self.C[i,j]-=self.m[i]*self.m[j]
 				
-	def inverse_exact(self,m1,C1,error,mode='gradient-descent'):	#Solve exact inverse ising problem with gradient descent
-		u=0.04
+	def inverse_exact(self,m1,C1,error):	#Solve exact inverse ising problem with gradient descent
+		u=0.1
 		count=0
 		self.independent_model(m1)
 		
@@ -69,80 +71,21 @@ class ising:
 		
 		while fit>error:
 			
-			if mode=='gradient-descent':	#Gradient descent algorithm
-			
-				dh=u*(m1-self.m)
-				self.h+=dh
-				dJ=u*(C1-self.C)
-				self.J+=dJ
-			elif mode=='coordinate-descent':	#Coordinate descent algorithm
-			
-				beta=fit*0.001
-#				beta=error**2
-				
-				def compF(d,p,ql,l,beta):
-					return -d*p +np.log(np.exp(-d) + (np.exp(d)-np.exp(-d))*(ql+1)*0.5)+beta*(np.abs(l+d)-np.abs(l))
+			dh=u*(m1-self.m)
+			self.h+=dh
+			dJ=u*(C1-self.C)
+			self.J+=dJ
 
-				def Fmin(p,ql,l,beta):
-					D=[]
-					for B in [1,-1]:
-						nden=(1+ql)*(1-p+B*beta)
-						if not nden==0:
-							nnum=(1-ql)*(1+p-B*beta)
-							if nnum/nden>0:
-								D1=0.5*np.log(nnum/nden)
-								if B*(l+D1)>0:
-									D+=[D1]
-					if len(D)==1:
-						return D[0]
-					else:
-						print 'error',len(D)
-						return None
-
-				inds=[]
-				p=[]
-				ql=[]
-				l=[]
-				for i in range(self.size):
-					inds+=[i]
-					p+=[m1[i]]
-					ql+=[self.m[i]]
-					l+=[self.h[i]]
-				for i in range(self.size):
-					for j in np.arange(i+1,self.size):
-						inds+=[(i,j)]
-						p+=[C1[i,j]]
-						ql+=[self.C[i,j]]
-						l+=[self.J[i,j]]
-				N=len(inds)
-				F=np.zeros(N)
-				d=np.zeros(N)
-				for i in range(len(inds)):
-					d[i]=Fmin(p[i],ql[i],l[i],beta)
-					if np.isnan(d[i]):
-						F[i]=1E10
-						d[i]=u*(p[i]-ql[i])
-					else:
-						F[i]=compF(d[i],p[i],ql[i],l[i],beta)
-
-				ind=np.argmin(F)
-				D=d[ind]
-
-				if ind<self.size:
-					self.h[inds[ind]]+=d[ind]*1
-				else:
-					self.J[inds[ind]]+=d[ind]*1
-
+			self.observables()
 			fit = max (np.max(np.abs(self.m-m1)),np.max(np.abs(self.C-C1)))
 			count+=1
-			if count%1==0:
+			if count%10==0:
 				print self.size,count,fit
-			self.observables()
-			
+				
 			
 		return fit
 	
-		
+	
 	def generateMCsample(self,T):	#Generate a series of Monte Carlo samples
 		self.randomize_state()
 		# Main simulation loop:
@@ -153,6 +96,136 @@ class ising:
 			n=bool2int((self.s+1)/2)
 			samples+=[n]
 		return samples
+				
+
+		
+	def CriticalGradient(self,T):
+	
+		
+		dh=np.zeros((self.size))
+		dJ=np.zeros((self.size,self.size))
+	
+		E=0
+		E2=0
+		
+		Esm=np.zeros(self.size)
+		E2sm=np.zeros(self.size)
+		m=np.zeros(self.size)
+		
+		
+		EsC=np.zeros((self.size,self.size))
+		E2sC=np.zeros((self.size,self.size))
+		C=np.zeros((self.size,self.size))
+		
+		self.randomize_state()
+		# Main simulation loop:
+		samples=[]
+		for t in range(T):
+#			self.MetropolisStep()
+			self.SequentialGlauberStep()
+			n=bool2int((self.s+1)/2)
+			Es=-(np.dot(self.s,self.h) + np.dot(np.dot(self.s,self.J),self.s))
+			E+=Es/T
+			E2+=Es**2/T
+			for i in range(self.size):
+				m[i]+=self.s[i]/float(T)
+				Esm[i]+=Es*self.s[i]/float(T)
+				E2sm[i]+=Es**2*self.s[i]/float(T)
+				for j in np.arange(i+1,self.size):
+					C[i,j]+=self.s[i]*self.s[j]/float(T)
+					EsC[i,j]+=Es*self.s[i]*self.s[j]/float(T)
+					E2sC[i,j]+=Es**2*self.s[i]*self.s[j]/float(T)
+		
+		
+		dh=m*(2*E+2*E**2-E2)-2*Esm*(1+E)+E2sm
+		dJ=C*(2*E+2*E**2-E2)-2*EsC*(1+E)+E2sC
+		
+		self.HC=(E2-E**2)
+		
+		return dh,dJ
+
+	def DynamicalCriticalGradient(self,T):
+	
+		
+		dh=np.zeros((self.size))
+		dJ=np.zeros((self.size,self.size))
+		
+		msH=np.zeros(self.size)
+		mF=np.zeros(self.size)
+		mG=np.zeros(self.size)
+				
+		msh=np.zeros(self.size)
+		msFh=np.zeros(self.size)
+		msGh=np.zeros(self.size)
+		mdFh=np.zeros(self.size)
+		mdGh=np.zeros(self.size)
+		ms2Hh=np.zeros(self.size)
+		
+		msJ=np.zeros((self.size,self.size))
+		msFJ=np.zeros((self.size,self.size))
+		msGJ=np.zeros((self.size,self.size))
+		mdFJ=np.zeros((self.size,self.size))
+		mdGJ=np.zeros((self.size,self.size))
+		ms2HJ=np.zeros((self.size,self.size))
+		
+		self.randomize_state()
+		# Main simulation loop:
+		samples=[]
+		for t in range(T):
+			self.SequentialGlauberStep()
+			n=bool2int((self.s+1)/2)
+			H= self.h + np.dot(self.s,self.J)+ np.dot(self.J,self.s)
+			F = H*np.tanh(H)-np.log(2*np.cosh(H))
+			G = (H/np.cosh(H))**2 + self.s*H*F
+			dF = H/np.cosh(H)**2
+			dG = 2*H*(1-H*np.tanh(H))/np.cosh(H)**2 + self.s*F + self.s*H*dF
+			
+			msH+=self.s*H/float(T)
+			mF+=F/float(T)
+			mG+=G/float(T)
+			
+			
+			msh+=self.s/float(T)
+			msFh+=self.s*F/float(T)
+			msGh+=self.s*G/float(T)
+			mdFh+=dF/float(T)
+			mdGh+=dG/float(T)
+			ms2Hh+=H/float(T)
+			
+			for j in range(self.size):
+				msJ[j,:]+=self.s*self.s[j]/float(T)
+				msFJ[j,:]+=self.s*self.s[j]*F/float(T)
+				msGJ[j,:]+=self.s*self.s[j]*G/float(T)
+				mdFJ[j,:]+=self.s[j]*dF/float(T)
+				mdGJ[j,:]+=self.s[j]*dG/float(T)
+				ms2HJ[j,:]+=self.s[j]*H/float(T)
+			
+		dh = mdGh + msGh - msh*mG - (msh+ms2Hh-msh*msH)*mF - msH*(mdFh+msFh-msh*mF)
+		dJ1 = mdGJ + msGJ - msJ*mG - (msJ+ms2HJ-msJ*msH)*mF - msH*(mdFJ+msFJ-msJ*mF)
+		
+		dJ=np.zeros((self.size,self.size))
+		for i in range(self.size):
+			for j in np.arange(i+1,self.size):
+				dJ[i,j]=dJ1[i,j]+dJ1[j,i]
+
+
+		self.HCl=mG-msH*mF
+		self.HC=np.sum(self.HCl)
+		
+		return dh,dJ
+		
+	def CriticalLearningStep(self,T,mode='dynamic'):	
+
+		u=0.004
+		u1=0.001
+		if mode=='static':
+			dh,dJ=self.CriticalGradient(T)
+		elif mode=='dynamic':
+			dh,dJ=self.DynamicalCriticalGradient(T)
+		
+		self.h+=u*dh
+		self.J+=u*dJ
+		
 			
 	def MetropolisStep(self,i=None):	    #Execute step of Metropolis algorithm
 		if i is None:
@@ -187,7 +260,7 @@ class ising:
 				
 	def metastable_states(self):	#Find the metastable states of the system
 		self.pdf()
-		self.ms=[]
+		ms=[]
 		Pms=[]
 		for n in range(2**self.size):
 			m=1
@@ -200,19 +273,20 @@ class ising:
 					m=0
 					break
 			if m==1:
-				self.ms+=[n]
+				ms+=[n]
 				Pms+=[self.P[n]]
-		return Pms
+		return ms,Pms
 		
 	def get_valley(self,s):		#Find an attractor "valley" starting from state s
-
+		ms,Pms=self.metastable_states()
 		n=bool2int((s+1)/2)
 		self.s=s.copy()
-		while not n in self.ms:	
+		while not n in ms:	
 			self.MetropolisStepT0()
 			n=bool2int((self.s+1)/2)
-		ind=self.ms.index(n)
+		ind=ms.index(n)
 		valley=ind
+		print ind,n,ms
 		return valley
 		
 	def energy(self):	#Compute energy function
@@ -224,7 +298,7 @@ class ising:
 		self.Em=np.sum(self.P*self.E)
 
 	def HeatCapacity(self):	#Compute energy function
-		self.energy()
+#		self.energy()
 		self.HC=self.Beta**2*(np.sum(self.P*self.E**2)-np.sum(self.P*self.E)**2)
 
 	
@@ -287,4 +361,5 @@ def KL(P,Q):
     
 def JSD(P,Q):
 	return 0.5*(KL(P,Q)+KL(Q,P))
+
 	
