@@ -1,0 +1,49 @@
+#!/usr/bin/env python
+
+from embodied_ising import ising
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+
+#Define number of units of agent, environment, sensors and motors
+agentsize=6
+envsize=3
+sensors=np.arange(0,2)
+motors=np.arange(3,6)
+size=agentsize+envsize
+
+x=ising(agentsize,envsize,sensors,motors)
+
+#Set parameters to random values
+x.random_fields()
+x.random_wiring(mode='agent',std=0.0)
+x.random_wiring(mode='environment',std=1)
+x.random_wiring(mode='sensors',std=1)
+x.random_wiring(mode='motors',std=1)
+
+
+J0=x.J.copy()
+plt.figure()
+plt.imshow(J0,interpolation='nearest')
+plt.title('J')
+plt.colorbar()
+
+		
+#Execute learning algorithm
+x.ContrastiveDivergence(200)
+
+
+plt.figure()
+plt.imshow(x.J,interpolation='nearest')
+plt.title('J')
+plt.colorbar()
+
+plt.figure()
+plt.imshow(x.J-J0,interpolation='nearest')
+plt.title('J')
+plt.colorbar()
+
+		
+plt.show()
+
