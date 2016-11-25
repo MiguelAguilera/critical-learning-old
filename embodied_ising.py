@@ -332,13 +332,14 @@ class ising:
 		
 		
 	def CriticalLearning(self,Iterations,T=None,mode='dynamic'):	
-		u=0.004
+		u=0.04
 		count=0
 		if mode=='static':
 			dh,dJ=self.CriticalGradient(T)
 		elif mode=='dynamic':
 			dh,dJ=self.DynamicalCriticalGradient(T)
-
+		fit=self.HC
+		print(self.size,count,fit)
 		for i in range(Iterations):
 			count+=1
 			self.h[0:self.Asize]+=u*dh[0:self.Asize]
