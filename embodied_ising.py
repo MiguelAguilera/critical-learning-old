@@ -21,6 +21,22 @@ class ising:
 		self.Ssize=len(sensorunits)		#Number of sensor units
 		self.Msize=len(motorunits)		#Number of motor units							
 
+	def get_state(self,mode='all'):
+		if mode=='all':
+			return self.s
+		elif mode=='agent':
+			return self.s[0:self.Asize]
+		elif mode=='environment':
+			return self.s[self.Asize:]
+	
+	def get_agent_state_index(self,mode='all'):
+		if mode=='all':
+			return bool2int(0.5*(self.s+1))
+		elif mode=='agent':
+			return bool2int(0.5*(self.s[0:self.Asize]+1))
+		elif mode=='environment':
+			return bool2int(0.5*(self.s[self.Asize:]+1))
+			
 	#Randomize the state of (part of) the network
 	def randomize_state(self,mode=None):
 		if mode is None:
@@ -61,7 +77,7 @@ class ising:
 		for i in inds1:
 			for j in inds2:
 				if i<j:
-					self.J[i,j]=np.random.randn(1)*std
+					self.J[i,j]=np.random.rand(1)*std
 		
 	#Execute step of the Glauber algorithm to update the state of one unit
 	def GlauberStep(self,i=None):			
@@ -72,8 +88,8 @@ class ising:
 			self.s[i] = -self.s[i]
 			
 	#Execute step of the Glauber algorithm to update the state of one unit restricting its influences to a given range of units	
-	def RestrictedGlauberStep(self,i,rng):			#Execute step of Glauber algorithm
-		eDiff = self.deltaErng(i,rng)
+	def RestrictedGlauberStep(self,i,rng,bias=1):			#Execute step of Glauber algorithm
+		eDiff = self.deltaErng(i,rng,bias)
 		if np.random.rand(1) < 1.0/(1.0+np.exp(self.Beta*eDiff)):    # Glauber
 			self.s[i] = -self.s[i]
 	
@@ -83,19 +99,20 @@ class ising:
 		return 2*(self.s[i]*self.h[i] + np.sum(self.s[i]*(self.J[i,:]*self.s)+self.s[i]*(self.J[:,i]*self.s)))
  
  	#Compute energy difference between two states with a flip of spin i, considering only a restricted range of connections
-	def deltaErng(self,i,rng):		
-		return 2*(self.s[i]*self.h[i] + np.sum(self.s[i]*(self.J[i,rng]*self.s[rng])+self.s[i]*(self.J[rng,i]*self.s[rng])))
+	def deltaErng(self,i,rng,bias=1):		
+		return 2*(self.s[i]*self.h[i]*bias + np.sum(self.s[i]*(self.J[i,rng]*self.s[rng])+self.s[i]*(self.J[rng,i]*self.s[rng])))
 			
 	
 	#Update states of the agent, where sensors are only influenced by units in the environment
 	def UpdateAgent(self):			
 		inds=np.random.permutation(self.Asize)
 		rngS=np.arange(self.Asize,self.size)
+#		rngS=np.concatenate((self.Spos,np.arange(self.Asize,self.size)))
 		rngA=np.arange(self.Asize)
+		for i in self.Spos:
+			self.RestrictedGlauberStep(i,rngS,bias=0)
 		for i in inds:
-			if i in self.Spos:
-				self.RestrictedGlauberStep(i,rngS)
-			else:
+			if not i in self.Spos:
 				self.RestrictedGlauberStep(i,rngA)
 	
 	#Update states of the 'dreaming' agent, where sensors are influenced by the agent's units
@@ -170,27 +187,171 @@ class ising:
 		self.PVneg/=float(np.sum(self.PVneg))
 	
 	#Contrastive Divergence Algorithm for learning the probability distribution of sensor units
-	def ContrastiveDivergence(self,T):	
-
+	def ContrastiveDivergence(self,Iterations,T=None):	
+		if T==None:
+			T=self.defaultT
 		u=0.04
 		count=0
 		self.observables_positive()
 		self.observables_negative()
+		fit = KL(self.PVpos,self.PVneg)
+		print(self.size,count,fit)
 		# Main simulation loop:
-		for t in range(T):
-
+		for t in range(Iterations):
+			count+=1
 			dh=u*(self.mpos-self.mneg)
-			self.h[0:self.Asize]+=dh[0:self.Asize]
 			dJ=u*(self.Cpos-self.Cneg)
+			
+			self.h[0:self.Asize]+=dh[0:self.Asize]
 			self.J[0:self.Asize,0:self.Asize]+=dJ[0:self.Asize,0:self.Asize]
 			
-			self.observables_positive()
-			self.observables_negative()
-#			fit = max (np.max(np.abs(self.mpos[0:self.Asize]-self.mneg[0:self.Asize])),np.max(np.abs(self.Cpos[0:self.Asize,0:self.Asize]-self.Cneg[0:self.Asize,0:self.Asize])))
+			self.observables_positive(T)
+			self.observables_negative(T)
 			fit = KL(self.PVpos,self.PVneg)
 			if count%10==0:
 				print(self.size,count,fit)
+			
+			
+			
+	#Critical Learning Algorithm for poising the system in a critical state	
+	def CriticalGradient(self,T):
+	
+		dh=np.zeros((self.size))
+		dJ=np.zeros((self.size,self.size))
+	
+		E=0
+		E2=0
+		
+		Esm=np.zeros(self.size)
+		E2sm=np.zeros(self.size)
+		m=np.zeros(self.size)
+		
+		EsC=np.zeros((self.size,self.size))
+		E2sC=np.zeros((self.size,self.size))
+		C=np.zeros((self.size,self.size))
+		
+		self.randomize_state()
+		# Main simulation loop:
+		samples=[]
+		for t in range(T):
+			self.UpdateAgent()
+			self.UpdateEnvironment()
+			n=bool2int((self.s+1)/2)
+			Es=-(np.dot(self.s,self.h) + np.dot(np.dot(self.s,self.J),self.s))
+			E+=Es/T
+			E2+=Es**2/T
+			for i in range(self.size):
+				m[i]+=self.s[i]/float(T)
+				Esm[i]+=Es*self.s[i]/float(T)
+				E2sm[i]+=Es**2*self.s[i]/float(T)
+				for j in np.arange(i+1,self.size):
+					C[i,j]+=self.s[i]*self.s[j]/float(T)
+					EsC[i,j]+=Es*self.s[i]*self.s[j]/float(T)
+					E2sC[i,j]+=Es**2*self.s[i]*self.s[j]/float(T)
+		
+		dh=m*(2*E+2*E**2-E2)-2*Esm*(1+E)+E2sm
+		dJ=C*(2*E+2*E**2-E2)-2*EsC*(1+E)+E2sC
+		
+		self.HC=(E2-E**2)
+		
+		return dh,dJ
+		
+	#Dynamical Critical Learning Algorithm for poising units in a critical state
+	def DynamicalCriticalGradient(self,T=None):
+		if T==None:
+			T=self.defaultT
+		dh=np.zeros((self.size))
+		dJ=np.zeros((self.size,self.size))
+		
+		msH=np.zeros(self.size)
+		mF=np.zeros(self.size)
+		mG=np.zeros(self.size)
+				
+		msh=np.zeros(self.size)
+		msFh=np.zeros(self.size)
+		msGh=np.zeros(self.size)
+		mdFh=np.zeros(self.size)
+		mdGh=np.zeros(self.size)
+		ms2Hh=np.zeros(self.size)
+		
+		msJ=np.zeros((self.size,self.size))
+		msFJ=np.zeros((self.size,self.size))
+		msGJ=np.zeros((self.size,self.size))
+		mdFJ=np.zeros((self.size,self.size))
+		mdGJ=np.zeros((self.size,self.size))
+		ms2HJ=np.zeros((self.size,self.size))
+		
+		self.randomize_state()
+		# Main simulation loop:
+		samples=[]
+		for t in range(T):
+			self.UpdateAgent()
+			self.UpdateEnvironment()
+			H= self.h + np.dot(self.s,self.J)+ np.dot(self.J,self.s)
+			F = H*np.tanh(H)-np.log(2*np.cosh(H))
+			G = (H/np.cosh(H))**2 + self.s*H*F
+			dF = H/np.cosh(H)**2
+			dG = 2*H*(1-H*np.tanh(H))/np.cosh(H)**2 + self.s*F + self.s*H*dF
+			
+			msH+=self.s*H/float(T)
+			mF+=F/float(T)
+			mG+=G/float(T)
+			
+			
+			msh+=self.s/float(T)
+			msFh+=self.s*F/float(T)
+			msGh+=self.s*G/float(T)
+			mdFh+=dF/float(T)
+			mdGh+=dG/float(T)
+			ms2Hh+=H/float(T)
+			
+			for j in range(self.size):
+				msJ[j,:]+=self.s*self.s[j]/float(T)
+				msFJ[j,:]+=self.s*self.s[j]*F/float(T)
+				msGJ[j,:]+=self.s*self.s[j]*G/float(T)
+				mdFJ[j,:]+=self.s[j]*dF/float(T)
+				mdGJ[j,:]+=self.s[j]*dG/float(T)
+				ms2HJ[j,:]+=self.s[j]*H/float(T)
+			
+		dh = mdGh + msGh - msh*mG - (msh+ms2Hh-msh*msH)*mF - msH*(mdFh+msFh-msh*mF)
+		dJ1 = mdGJ + msGJ - msJ*mG - (msJ+ms2HJ-msJ*msH)*mF - msH*(mdFJ+msFJ-msJ*mF)
+		
+
+		dJ=np.zeros((self.size,self.size))
+		for j in range(self.size):
+			for i in np.arange(self.size):
+				if i>j:
+					dJ[j,i]+=dJ1[j,i]
+				elif j>i:
+					dJ[i,j]+=dJ1[j,i]
+		
+		self.HCl=mG-msH*mF
+		self.HC=np.sum(self.HCl[0:self.Asize])
+		
+		return dh,dJ
+		
+		
+	def CriticalLearning(self,Iterations,T=None,mode='dynamic'):	
+		u=0.004
+		count=0
+		if mode=='static':
+			dh,dJ=self.CriticalGradient(T)
+		elif mode=='dynamic':
+			dh,dJ=self.DynamicalCriticalGradient(T)
+
+		for i in range(Iterations):
 			count+=1
+			self.h[0:self.Asize]+=u*dh[0:self.Asize]
+			self.J[0:self.Asize,0:self.Asize]+=u*dJ[0:self.Asize,0:self.Asize]
+			if mode=='static':
+				dh,dJ=self.CriticalGradient(T)
+			elif mode=='dynamic':
+				dh,dJ=self.DynamicalCriticalGradient(T)
+			fit=self.HC
+			
+			if count%10==0:
+				print(self.size,count,fit)
+			
 
 #Transform bool array into positive integer
 def bool2int(x):				
