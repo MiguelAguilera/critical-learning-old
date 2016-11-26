@@ -28,14 +28,13 @@ class ising:
 			return self.s[0:self.Asize]
 		elif mode=='environment':
 			return self.s[self.Asize:]
+		elif mode=='motors':
+			return self.s[self.Mpos]
+		elif mode=='sensors':
+			return self.s[self.Spos]
 	
 	def get_agent_state_index(self,mode='all'):
-		if mode=='all':
-			return bool2int(0.5*(self.s+1))
-		elif mode=='agent':
-			return bool2int(0.5*(self.s[0:self.Asize]+1))
-		elif mode=='environment':
-			return bool2int(0.5*(self.s[self.Asize:]+1))
+		return bool2int(0.5*(self.get_state(mode)+1))
 			
 	#Randomize the state of (part of) the network
 	def randomize_state(self,mode=None):
@@ -61,7 +60,7 @@ class ising:
 		self.h[inds]=np.random.randn(len(inds))*std		
 		
 	#Set random connections to sets of units of the system
-	def random_wiring(self,mode='environment',std=1):	#Set random values for h and J
+	def random_wiring(self,mode='environment',std=1,offset=0):	#Set random values for h and J
 		if mode == 'agent':
 			inds1=np.arange(0,self.Asize)
 			inds2=np.arange(0,self.Asize)
@@ -77,7 +76,7 @@ class ising:
 		for i in inds1:
 			for j in inds2:
 				if i<j:
-					self.J[i,j]=np.random.rand(1)*std
+					self.J[i,j]=np.random.randn(1)*std + offset
 		
 	#Execute step of the Glauber algorithm to update the state of one unit
 	def GlauberStep(self,i=None):			
@@ -87,33 +86,49 @@ class ising:
 		if np.random.rand(1) < 1.0/(1.0+np.exp(self.Beta*eDiff)):    # Glauber
 			self.s[i] = -self.s[i]
 			
+	#Compute energy difference between two states with a flip of spin i	
+	def deltaE(self,i):		
+		return 2*(self.s[i]*self.h[i] + np.sum(self.s[i]*(self.J[i,:]*self.s)+self.s[i]*(self.J[:,i]*self.s)))
+		
+		
 	#Execute step of the Glauber algorithm to update the state of one unit restricting its influences to a given range of units	
 	def RestrictedGlauberStep(self,i,rng,bias=1):			#Execute step of Glauber algorithm
 		eDiff = self.deltaErng(i,rng,bias)
 		if np.random.rand(1) < 1.0/(1.0+np.exp(self.Beta*eDiff)):    # Glauber
 			self.s[i] = -self.s[i]
 	
-	
-	#Compute energy difference between two states with a flip of spin i	
-	def deltaE(self,i):		
-		return 2*(self.s[i]*self.h[i] + np.sum(self.s[i]*(self.J[i,:]*self.s)+self.s[i]*(self.J[:,i]*self.s)))
  
  	#Compute energy difference between two states with a flip of spin i, considering only a restricted range of connections
-	def deltaErng(self,i,rng,bias=1):		
+	def deltaErng(self,i,rng,bias=1):	
 		return 2*(self.s[i]*self.h[i]*bias + np.sum(self.s[i]*(self.J[i,rng]*self.s[rng])+self.s[i]*(self.J[rng,i]*self.s[rng])))
 			
 	
-	#Update states of the agent, where sensors are only influenced by units in the environment
-	def UpdateAgent(self):			
-		inds=np.random.permutation(self.Asize)
+	#Update states of the sensors from the environment
+	def UpdateSensors(self):			
 		rngS=np.arange(self.Asize,self.size)
 #		rngS=np.concatenate((self.Spos,np.arange(self.Asize,self.size)))
-		rngA=np.arange(self.Asize)
-		for i in self.Spos:
+		for i in np.random.permutation(self.Spos):
 			self.RestrictedGlauberStep(i,rngS,bias=0)
-		for i in inds:
-			if not i in self.Spos:
+			
+	#Update states of the agent from its sensors		
+	def UpdateAgent(self):			
+		rngA=np.arange(self.Asize)
+		for i in np.random.permutation(self.Asize):
+			if not (i in self.Spos or i in self.Mpos):
 				self.RestrictedGlauberStep(i,rngA)
+				
+		for i in np.random.permutation(self.Mpos):
+			self.RestrictedGlauberStep(i,rngA)
+			
+			
+	#Update states of the environment, where only motor units from the agent infuence the environment		
+	def UpdateEnvironment(self):	
+		inds=np.random.permutation(self.Envsize)+self.Asize
+		rng=np.arange(self.Asize,self.size)
+		rng =  np.concatenate((self.Mpos,rng))
+		for i in inds:
+			self.RestrictedGlauberStep(i,rng)
+			
 	
 	#Update states of the 'dreaming' agent, where sensors are influenced by the agent's units
 	def UpdateDreamingAgent(self):	
@@ -122,14 +137,6 @@ class ising:
 		for i in inds:
 			self.RestrictedGlauberStep(i,rng)
 			
-	#Update states of the environment, where only motor units from the agent infuence the environment		
-	def UpdateEnvironment(self):	
-		inds=np.random.permutation(self.Envsize)+self.Asize
-		rng=np.arange(self.Asize,self.size)
-		rng =  np.concatenate((self.Mpos,rng))
-		for i in inds:
-			self.RestrictedGlauberStep(i,rng)	
-
 	#Update all states of the system without restricted infuences
 	def SequentialGlauberStep(self):	
 		inds=np.random.permutation(self.size)
@@ -146,6 +153,7 @@ class ising:
 			
 		self.randomize_state()
 		for t in range(T):
+			self.UpdateSensors()
 			self.UpdateAgent()
 			self.UpdateEnvironment()
 			
@@ -234,6 +242,7 @@ class ising:
 		# Main simulation loop:
 		samples=[]
 		for t in range(T):
+			self.UpdateSensors()
 			self.UpdateAgent()
 			self.UpdateEnvironment()
 			n=bool2int((self.s+1)/2)
@@ -252,7 +261,7 @@ class ising:
 		dh=m*(2*E+2*E**2-E2)-2*Esm*(1+E)+E2sm
 		dJ=C*(2*E+2*E**2-E2)-2*EsC*(1+E)+E2sC
 		
-		self.HC=(E2-E**2)
+		self.HC=(E2-E**2)/float(self.size)
 		
 		return dh,dJ
 		
@@ -285,6 +294,7 @@ class ising:
 		# Main simulation loop:
 		samples=[]
 		for t in range(T):
+			self.UpdateSensors()
 			self.UpdateAgent()
 			self.UpdateEnvironment()
 			H= self.h + np.dot(self.s,self.J)+ np.dot(self.J,self.s)
@@ -354,6 +364,35 @@ class ising:
 				print(self.size,count,fit)
 			
 
+	def CriticalContrastiveDivergence(self,Iterations,T=None):	
+		if T==None:
+			T=self.defaultT
+		u=0.04
+		count=0
+		self.observables_positive()
+		self.observables_negative()
+		fit = KL(self.PVpos,self.PVneg)
+		print(self.size,count,fit)
+		# Main simulation loop:
+		for t in range(Iterations):
+			count+=1
+			dh1=u*(self.mpos-self.mneg)
+			dJ1=u*(self.Cpos-self.Cneg)
+			
+			dh2,dJ2=self.DynamicalCriticalGradient(T)
+			dh=0.5*(dh1+dh2)
+			dJ=0.5*(dJ1+dJ2)
+			self.h[0:self.Asize]+=dh[0:self.Asize]
+			self.J[0:self.Asize,0:self.Asize]+=dJ[0:self.Asize,0:self.Asize]
+			
+			self.observables_positive(T)
+			self.observables_negative(T)
+			fit = KL(self.PVpos,self.PVneg)
+			fit2 = self.HC
+			if count%10==0:
+				print(self.size,count,fit,fit2)
+				
+				
 #Transform bool array into positive integer
 def bool2int(x):				
     y = 0
