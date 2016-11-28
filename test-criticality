@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 size=15
-steps=200
+steps=100
 T=200
 
 x=ising(size)
@@ -31,7 +31,7 @@ plt.title('Probability density function before learning')
 for rep in range(steps):
 	x.CriticalLearningStep(T)
 	if rep%1==0:
-		print rep, x.HC
+		print(rep, x.HC)
 
 x.energy()
 x.HeatCapacity()
@@ -51,9 +51,9 @@ plt.imshow(x.J,interpolation='nearest')
 plt.colorbar()
 plt.title('Connectivity matrix')
 
-print x.HC
-print x.h
-print x.J
+print(x.HC)
+print(x.h)
+print(x.J)
 
 
 r=np.arange(-1,1,0.05)

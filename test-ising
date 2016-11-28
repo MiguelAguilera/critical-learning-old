@@ -18,7 +18,7 @@ T1=10000
 X=np.zeros((size,T1))
 
 x.randomize_state()
-print x.s
+print(x.s)
 
 
 for t in range(T1):
@@ -52,13 +52,13 @@ x.HC=0
 for rep in range(steps):
 	x.CriticalLearningStep(T)
 	if rep%1==0:
-		print rep, x.HC
+		print(rep, x.HC)
 
 
 X=np.zeros((size,T1))
 
 x.randomize_state()
-print x.s
+print(x.s)
 
 
 for t in range(T1):

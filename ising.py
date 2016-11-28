@@ -80,7 +80,7 @@ class ising:
 			fit = max (np.max(np.abs(self.m-m1)),np.max(np.abs(self.C-C1)))
 			count+=1
 			if count%10==0:
-				print self.size,count,fit
+				print(self.size,count,fit)
 				
 			
 		return fit
@@ -97,7 +97,31 @@ class ising:
 			samples+=[n]
 		return samples
 				
+	def ContrastiveDivergenceStep(self,T):	
 
+		u=0.004
+		
+		m=np.zeros(self.size)
+		C=np.zeros((self.size,self.size))
+		m1=np.zeros(self.size)
+		C1=np.zeros((self.size,self.size))
+		self.randomize_state()
+		# Main simulation loop:
+		samples=[]
+		for t in range(T):
+			self.SequentialGlauberStep()
+			self.m1+=self.s/float(T)
+			for i in range(self.size):
+				self.C1[i,i+1:]+=self.s[i]*self.s[i+1:]/float(T)
+		if mode=='static':
+			dh,dJ=self.CriticalGradient(T)
+		elif mode=='dynamic':
+			dh,dJ=self.DynamicalCriticalGradient(T)
+		
+		self.h+=u*dh
+		self.J+=u*dJ
+		
+		
 		
 	def CriticalGradient(self,T):
 	
@@ -216,8 +240,7 @@ class ising:
 		
 	def CriticalLearningStep(self,T,mode='dynamic'):	
 
-		u=0.004
-		u1=0.001
+		u=0.04
 		if mode=='static':
 			dh,dJ=self.CriticalGradient(T)
 		elif mode=='dynamic':
@@ -286,7 +309,7 @@ class ising:
 			n=bool2int((self.s+1)/2)
 		ind=ms.index(n)
 		valley=ind
-		print ind,n,ms
+		print(ind,n,ms)
 		return valley
 		
 	def energy(self):	#Compute energy function
@@ -303,10 +326,10 @@ class ising:
 
 	
 def bool2int(x):				#Transform bool array into positive integer
-    y = 0L
+    y = 0
     for i,j in enumerate(np.array(x)[::-1]):
 #        y += j<<i
-        y += long(j*2**i)
+        y += j*2**i
     return y
     
 def bitfield(n,size):			#Transform positive integer into bit array
