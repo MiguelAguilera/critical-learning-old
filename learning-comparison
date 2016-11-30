@@ -29,19 +29,10 @@ offset=1
 
 x.random_fields(mode='environment',std=1)
 
-#x.random_wiring(mode='agent',std=0.0)
 x.random_wiring(mode='environment',std=Amp/float(envsize),offset=offset)
 x.random_wiring(mode='sensors',std=Cin/float(envsize),offset=offset)
 x.random_wiring(mode='motors',std=Cout/float(len(motors)),offset=offset)
 
-
-#x.h[-1]=0.5
-#x.h[-2]=-1
-#x.J[0:2,-2:]=1.0	#Sensor connections
-#x.J[2:-2,-2:]=1.0 	#Motor connections
-#x.J[2,-1]=-0.5
-#x.J[1,-1]=-0.5
-#x.J[-2,-1]=1
 
 xc=ising(agentsize,envsize,sensors,motors)
 xc.h=x.h.copy()
@@ -58,11 +49,9 @@ plt.colorbar()
 #Execute learning algorithm
 T=200
 Iterations=200
-x.ContrastiveDivergence(Iterations,T)
+x.BoltzmannLearning(Iterations,T)
 xc.CriticalLearning(Iterations,T,mode='dynamic')
 
-#xc.CriticalLearning(Iterations,T,mode='static')
-#xc.CriticalContrastiveDivergence(Iterations,T)
 
 print(x.h)
 print(xc.h)

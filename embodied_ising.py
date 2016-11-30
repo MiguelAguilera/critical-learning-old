@@ -194,8 +194,8 @@ class ising:
 				self.Cneg[i,j]-=self.mneg[i]*self.mneg[j]	
 		self.PVneg/=float(np.sum(self.PVneg))
 	
-	#Contrastive Divergence Algorithm for learning the probability distribution of sensor units
-	def ContrastiveDivergence(self,Iterations,T=None):	
+	#Boltzmann learning Algorithm for learning the probability distribution of sensor units
+	def BoltzmannLearning(self,Iterations,T=None):	
 		if T==None:
 			T=self.defaultT
 		u=0.01
@@ -361,35 +361,6 @@ class ising:
 				print(self.size,count,fit)
 			
 
-	def CriticalContrastiveDivergence(self,Iterations,T=None):	
-		if T==None:
-			T=self.defaultT
-		u=0.04
-		count=0
-		self.observables_positive()
-		self.observables_negative()
-		fit = KL(self.PVpos,self.PVneg)
-		print(self.size,count,fit)
-		# Main simulation loop:
-		for t in range(Iterations):
-			count+=1
-			dh1=u*(self.mpos-self.mneg)
-			dJ1=u*(self.Cpos-self.Cneg)
-			
-			dh2,dJ2=self.DynamicalCriticalGradient(T)
-			dh=0.5*(dh1+dh2)
-			dJ=0.5*(dJ1+dJ2)
-			self.h[0:self.Asize]+=dh[0:self.Asize]
-			self.J[0:self.Asize,0:self.Asize]+=dJ[0:self.Asize,0:self.Asize]
-			
-			self.observables_positive(T)
-			self.observables_negative(T)
-			fit = KL(self.PVpos,self.PVneg)
-			fit2 = self.HC
-			if count%10==0:
-				print(self.size,count,fit,fit2)
-				
-				
 #Transform bool array into positive integer
 def bool2int(x):				
     y = 0
