@@ -12,7 +12,7 @@ class ising:
 		self.J=np.zeros((netsize,netsize))
 		self.randomize_state()
 		self.Beta=1.0
-		self.defaultT=netsize*100
+		self.defaultT=max(100,netsize*20)
 		
 		self.Spos=sensorunits				#List of sensor units
 		self.Mpos=motorunits				#List of motor units
@@ -76,7 +76,9 @@ class ising:
 		for i in inds1:
 			for j in inds2:
 				if i<j:
-					self.J[i,j]=np.random.randn(1)*std + offset
+					self.J[i,j]=(np.random.randn(1)+offset)*std
+		
+		
 		
 	#Execute step of the Glauber algorithm to update the state of one unit
 	def GlauberStep(self,i=None):			
@@ -94,6 +96,8 @@ class ising:
 	#Execute step of the Glauber algorithm to update the state of one unit restricting its influences to a given range of units	
 	def RestrictedGlauberStep(self,i,rng,bias=1):			#Execute step of Glauber algorithm
 		eDiff = self.deltaErng(i,rng,bias)
+#		if np.array_equal(rng,[4,5]):
+#			print(rng,eDiff)
 		if np.random.rand(1) < 1.0/(1.0+np.exp(self.Beta*eDiff)):    # Glauber
 			self.s[i] = -self.s[i]
 	
@@ -103,40 +107,38 @@ class ising:
 		return 2*(self.s[i]*self.h[i]*bias + np.sum(self.s[i]*(self.J[i,rng]*self.s[rng])+self.s[i]*(self.J[rng,i]*self.s[rng])))
 			
 	
-	#Update states of the sensors from the environment
-	def UpdateSensors(self):			
-		rngS=np.arange(self.Asize,self.size)
-#		rngS=np.concatenate((self.Spos,np.arange(self.Asize,self.size)))
-		for i in np.random.permutation(self.Spos):
-			self.RestrictedGlauberStep(i,rngS,bias=0)
-			
 	#Update states of the agent from its sensors		
-	def UpdateAgent(self):			
-		rngA=np.arange(self.Asize)
-		for i in np.random.permutation(self.Asize):
-			if not (i in self.Spos or i in self.Mpos):
-				self.RestrictedGlauberStep(i,rngA)
-				
-		for i in np.random.permutation(self.Mpos):
+	def Update(self,i=None):	
+		if i is None:
+			i = np.random.randint(self.size)
+		if i in self.Spos:
+			rngS=np.arange(self.Asize,self.size)	
+			self.RestrictedGlauberStep(i,rngS,bias=0)
+		elif i<self.Asize:
+			rngA=np.arange(self.Asize)
 			self.RestrictedGlauberStep(i,rngA)
+		else:
+			rngE = np.arange(self.Asize,self.size)
+			rngE =  np.concatenate((self.Mpos,rngE))
+			self.RestrictedGlauberStep(i,rngE)
 			
-			
-	#Update states of the environment, where only motor units from the agent infuence the environment		
-	def UpdateEnvironment(self):	
-		inds=np.random.permutation(self.Envsize)+self.Asize
-		rng=np.arange(self.Asize,self.size)
-		rng =  np.concatenate((self.Mpos,rng))
-		for i in inds:
-			self.RestrictedGlauberStep(i,rng)
-			
+	def SequentialUpdate(self):
+		for i in np.random.permutation(self.size):
+			self.Update(i)
 	
+
+
 	#Update states of the 'dreaming' agent, where sensors are influenced by the agent's units
-	def UpdateDreamingAgent(self):	
-		inds=np.random.permutation(self.Asize)
+	def UpdateDreaming(self,i=None):	
+		if i is None:
+			i = np.random.randint(self.Asize)
 		rng=np.arange(self.Asize)
-		for i in inds:
-			self.RestrictedGlauberStep(i,rng)
-			
+		self.RestrictedGlauberStep(i,rng)
+
+	def SequentialUpdateDreaming(self):
+		for i in np.random.permutation(self.Asize):
+			self.UpdateDreaming(i)
+	
 	#Update all states of the system without restricted infuences
 	def SequentialGlauberStep(self):	
 		inds=np.random.permutation(self.size)
@@ -153,9 +155,7 @@ class ising:
 			
 		self.randomize_state()
 		for t in range(T):
-			self.UpdateSensors()
-			self.UpdateAgent()
-			self.UpdateEnvironment()
+			self.SequentialUpdate()
 			
 			n=int(bool2int(0.5*(self.s[self.Spos]+1)))
 			self.PVpos[n]+=1.0
@@ -180,7 +180,7 @@ class ising:
 				
 		self.randomize_state()
 		for t in range(T):
-			self.UpdateDreamingAgent()
+			self.SequentialUpdateDreaming()
 			
 			n=int(bool2int(0.5*(self.s[self.Spos]+1)))
 			self.PVneg[n]+=1.0
@@ -198,7 +198,7 @@ class ising:
 	def ContrastiveDivergence(self,Iterations,T=None):	
 		if T==None:
 			T=self.defaultT
-		u=0.04
+		u=0.01
 		count=0
 		self.observables_positive()
 		self.observables_negative()
@@ -242,9 +242,8 @@ class ising:
 		# Main simulation loop:
 		samples=[]
 		for t in range(T):
-			self.UpdateSensors()
-			self.UpdateAgent()
-			self.UpdateEnvironment()
+			for i in range(self.size):
+				self.Update()
 			n=bool2int((self.s+1)/2)
 			Es=-(np.dot(self.s,self.h) + np.dot(np.dot(self.s,self.J),self.s))
 			E+=Es/T
@@ -294,9 +293,7 @@ class ising:
 		# Main simulation loop:
 		samples=[]
 		for t in range(T):
-			self.UpdateSensors()
-			self.UpdateAgent()
-			self.UpdateEnvironment()
+			self.SequentialUpdate()
 			H= self.h + np.dot(self.s,self.J)+ np.dot(self.J,self.s)
 			F = H*np.tanh(H)-np.log(2*np.cosh(H))
 			G = (H/np.cosh(H))**2 + self.s*H*F
@@ -399,7 +396,7 @@ def bool2int(x):
     for i,j in enumerate(np.array(x)[::-1]):
 #        y += j<<i
         y += j*2**i
-    return y
+    return int(y)
     
 #Transform positive integer into bit array
 def bitfield(n,size):			

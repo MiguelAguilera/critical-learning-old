@@ -10,9 +10,9 @@ from infoflow import MI,TE,Entropy
 #Define number of units of agent, environment, sensors and motors
 
 envsize=3
-nmotors=3
+nmotors=2
 nsensors=3
-nhidden=0
+nhidden=2
 agentsize=nmotors+nsensors+nhidden
 sensors=np.arange(0,nsensors)
 motors=np.arange(nsensors+nhidden,agentsize)
@@ -21,24 +21,32 @@ size=agentsize+envsize
 x=ising(agentsize,envsize,sensors,motors)
 
 #Set parameters to random values
-Amp=1.5
-Cin=1.5
-Cout=1.5
-offset_multiplier=1
+C=1.5
+Amp=C
+Cin=C
+Cout=C
+offset=1
+
 x.random_fields(mode='environment',std=1)
 
 #x.random_wiring(mode='agent',std=0.0)
-x.random_wiring(mode='environment',std=Amp/float(envsize),offset=Amp/float(envsize)*offset_multiplier)
-x.random_wiring(mode='sensors',std=Cin/float(envsize),offset=Cin/float(envsize)*offset_multiplier)
-x.random_wiring(mode='motors',std=Cout/float(len(motors)),offset=Cout/float(len(motors))*offset_multiplier)
+x.random_wiring(mode='environment',std=Amp/float(envsize),offset=offset)
+x.random_wiring(mode='sensors',std=Cin/float(envsize),offset=offset)
+x.random_wiring(mode='motors',std=Cout/float(len(motors)),offset=offset)
 
+
+#x.h[-1]=0.5
+#x.h[-2]=-1
+#x.J[0:2,-2:]=1.0	#Sensor connections
+#x.J[2:-2,-2:]=1.0 	#Motor connections
+#x.J[2,-1]=-0.5
+#x.J[1,-1]=-0.5
+#x.J[-2,-1]=1
 
 xc=ising(agentsize,envsize,sensors,motors)
 xc.h=x.h.copy()
 xc.J=x.J.copy()
 
-#xc.UpdateEnvironment()
-#exit()
 
 J0=xc.J.copy()
 plt.figure()
@@ -52,6 +60,7 @@ T=200
 Iterations=200
 x.ContrastiveDivergence(Iterations,T)
 xc.CriticalLearning(Iterations,T,mode='dynamic')
+
 #xc.CriticalLearning(Iterations,T,mode='static')
 #xc.CriticalContrastiveDivergence(Iterations,T)
 
@@ -68,33 +77,66 @@ plt.imshow(xc.J[0:xc.Asize,0:xc.Asize],interpolation='nearest')
 plt.title('J critical')
 plt.colorbar()
 
-T=10000
+T=100000
 M=np.zeros(T)
 S=np.zeros(T)
+E=np.zeros(T)
+P=np.zeros(2**xc.size)
+
 x.randomize_state()
-for t in range(T):
-	if t%3==0:
-		x.UpdateSensors()
-	elif t%3==1:
-		x.UpdateAgent()
-	else:
-		x.UpdateEnvironment()
-	M[t]=x.get_agent_state_index('motors')
-	S[t]=x.get_agent_state_index('sensors')
+t=0
+while t<T:
+	for i in np.random.permutation(x.size):
+		if t<T:
+			x.Update(i)
+			M[t]=x.get_agent_state_index('motors')
+			S[t]=x.get_agent_state_index('sensors')
+			E[t]=x.get_agent_state_index('environment')
+			n=x.get_agent_state_index()
+			P[n]+=1
+			t+=1
+
+	
+A=S+2**nsensors*M
+P/=float(np.sum(P))
 	
 Mc=np.zeros(T)
 Sc=np.zeros(T)
+Ec=np.zeros(T)
+Pc=np.zeros(2**xc.size)
+
 xc.randomize_state()
-for t in range(T):
-	if t%3==0:
-		xc.UpdateSensors()
-	elif t%3==1:
-		xc.UpdateAgent()
-	else:
-		xc.UpdateEnvironment()
-	Mc[t]=xc.get_agent_state_index('motors')
-	Sc[t]=xc.get_agent_state_index('sensors')
-	
+t=0
+while t<T:
+	for i in np.random.permutation(xc.size):
+		if t<T:
+			xc.Update(i)
+			Mc[t]=xc.get_agent_state_index('motors')
+			Sc[t]=xc.get_agent_state_index('sensors')
+			Ec[t]=xc.get_agent_state_index('environment')
+			n=xc.get_agent_state_index()
+			Pc[n]+=1
+			t+=1
+		
+Ac=Sc+2**nsensors*Mc
+Pc/=float(np.sum(Pc))
+
+order=np.argsort(P)[::-1]
+r=np.arange(1,2**x.size+1)
+plt.figure()
+plt.loglog(r,P[order])
+
+
+order=np.argsort(Pc)[::-1]
+r=np.arange(1,2**xc.size+1)
+plt.loglog(r,Pc[order],'r')
+Psf = 1.0/(1+np.arange(2**size))
+Psf/=np.sum(Psf)
+plt.loglog(r,Psf,'--g')
+
+#plt.show()
+#exit()
+
 plt.figure()
 plt.plot(M)
 plt.plot(S)
@@ -104,24 +146,26 @@ plt.plot(Mc)
 plt.plot(Sc)
 
 print('Predictive')
-print('EntropyA',Entropy(M),'EntropyE',Entropy(S))
-print('MI',MI(M,S))
+print('EntropyM',Entropy(M),'EntropyS',Entropy(S))
+print('MIsm',MI(M,S))
+print('MIae',MI(S+M*2**nsensors,E))
 
-rs=np.unique(np.round(2**np.arange(0,7.5,0.5)).astype(int))
-#rs=np.arange(1,11)
+rs=np.unique(np.round(2**np.arange(0,7.5,0.25)).astype(int))
+print(rs)
 TEms=np.zeros(len(rs))
 TEsm=np.zeros(len(rs))
 for i,r in enumerate(rs):
-	TEms[i]=TE(M,S,r)#/Entropy(M)
-	TEsm[i]=TE(S,M,r)#/Entropy(S)
-
+	TEms[i]=TE(M,S,r)
+	TEsm[i]=TE(S,M,r)
 print('mean TEms',np.mean(TEms))
 print('mean TEsm',np.mean(TEsm))
 
 print
 print('Critical')
 print('EntropyM',Entropy(Mc),'EntropyS',Entropy(Sc))
-print('MI',MI(Mc,Sc))
+print('MIsm',MI(Mc,Sc))
+print('MIae',MI(Sc+Mc*2**nsensors,Ec))
+
 
 plt.figure()
 plt.semilogx(rs,TEms,'--r',linewidth=1.5,label='m->s (predictive)')
@@ -131,20 +175,24 @@ plt.semilogx(rs,TEsm,'--b',linewidth=1.5,label='s->m (predictive)')
 TEmsc=np.zeros(len(rs))
 TEsmc=np.zeros(len(rs))
 for i,r in enumerate(rs):
-	TEmsc[i]=TE(Mc,Sc,r)#/Entropy(Mc)
-	TEsmc[i]=TE(Sc,Mc,r)#/Entropy(Sc)
+	TEmsc[i]=TE(Mc,Sc,r)
+	TEsmc[i]=TE(Sc,Mc,r)
+	
 	
 print('mean TEms',np.mean(TEmsc))
 print('mean TEsm',np.mean(TEsmc))
 
-#plt.figure()
 plt.semilogx(rs,TEmsc,'r',linewidth=1.5,label='m->s (critical)')
 plt.semilogx(rs,TEsmc,'b',linewidth=1.5,label='s->m (critical)')
-plt.title('Transfer entropy')
+plt.title('Transfer entropy sensors-motors')
 plt.legend()
 
-x.observables_positive(T)
-x.observables_negative(T)
+
+
+
+
+x.observables_positive(200)
+x.observables_negative(200)
 fit = KL(x.PVpos,x.PVneg)
 print(fit)
 
