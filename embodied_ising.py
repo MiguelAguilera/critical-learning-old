@@ -198,18 +198,20 @@ class ising:
 	def BoltzmannLearning(self,Iterations,T=None):	
 		if T==None:
 			T=self.defaultT
-		u=0.01
+		u=0.04
 		count=0
 		self.observables_positive()
 		self.observables_negative()
 		fit = KL(self.PVpos,self.PVneg)
-		print(self.size,count,fit)
+		print(count,fit)
 		# Main simulation loop:
 		for t in range(Iterations):
 			count+=1
 			dh=u*(self.mpos-self.mneg)
 			dJ=u*(self.Cpos-self.Cneg)
 			
+#			dh[self.Spos]=0
+#			dJ[self.Spos[:,None],self.Spos]=0
 			self.h[0:self.Asize]+=dh[0:self.Asize]
 			self.J[0:self.Asize,0:self.Asize]+=dJ[0:self.Asize,0:self.Asize]
 			
@@ -217,7 +219,7 @@ class ising:
 			self.observables_negative(T)
 			fit = KL(self.PVpos,self.PVneg)
 			if count%10==0:
-				print(self.size,count,fit)
+				print(count,fit)
 			
 			
 			
@@ -346,7 +348,7 @@ class ising:
 		elif mode=='dynamic':
 			dh,dJ=self.DynamicalCriticalGradient(T)
 		fit=self.HC
-		print(self.size,count,fit)
+		print(count,fit)
 		for i in range(Iterations):
 			count+=1
 			self.h[0:self.Asize]+=u*dh[0:self.Asize]
@@ -358,7 +360,7 @@ class ising:
 			fit=self.HC
 			
 			if count%10==0:
-				print(self.size,count,fit)
+				print(count,fit)
 			
 
 #Transform bool array into positive integer

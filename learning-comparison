@@ -9,10 +9,10 @@ from infoflow import MI,TE,Entropy
 
 #Define number of units of agent, environment, sensors and motors
 
-envsize=3
-nmotors=2
-nsensors=3
-nhidden=2
+envsize=1
+nmotors=1
+nsensors=1
+nhidden=0
 agentsize=nmotors+nsensors+nhidden
 sensors=np.arange(0,nsensors)
 motors=np.arange(nsensors+nhidden,agentsize)
@@ -27,12 +27,15 @@ Cin=C
 Cout=C
 offset=1
 
-x.random_fields(mode='environment',std=1)
+#x.random_fields(mode='environment',std=1)
 
-x.random_wiring(mode='environment',std=Amp/float(envsize),offset=offset)
-x.random_wiring(mode='sensors',std=Cin/float(envsize),offset=offset)
-x.random_wiring(mode='motors',std=Cout/float(len(motors)),offset=offset)
+#x.random_wiring(mode='environment',std=Amp/float(envsize),offset=offset)
+#x.random_wiring(mode='sensors',std=Cin/float(envsize),offset=offset)
+#x.random_wiring(mode='motors',std=Cout/float(len(motors)),offset=offset)
 
+x.h[2]=-1
+x.J[0,2]=2.4
+x.J[1,2]=2.4
 
 xc=ising(agentsize,envsize,sensors,motors)
 xc.h=x.h.copy()
@@ -47,8 +50,8 @@ plt.colorbar()
 
 		
 #Execute learning algorithm
-T=200
-Iterations=200
+T=100
+Iterations=100
 x.BoltzmannLearning(Iterations,T)
 xc.CriticalLearning(Iterations,T,mode='dynamic')
 
@@ -66,7 +69,7 @@ plt.imshow(xc.J[0:xc.Asize,0:xc.Asize],interpolation='nearest')
 plt.title('J critical')
 plt.colorbar()
 
-T=100000
+T=10000
 M=np.zeros(T)
 S=np.zeros(T)
 E=np.zeros(T)
@@ -140,7 +143,6 @@ print('MIsm',MI(M,S))
 print('MIae',MI(S+M*2**nsensors,E))
 
 rs=np.unique(np.round(2**np.arange(0,7.5,0.25)).astype(int))
-print(rs)
 TEms=np.zeros(len(rs))
 TEsm=np.zeros(len(rs))
 for i,r in enumerate(rs):
