@@ -58,6 +58,7 @@ class ising:
 		elif mode=='environment':
 			inds=np.arange(self.Asize,self.size)		
 		self.h[inds]=np.random.randn(len(inds))*std		
+		self.h[self.Spos]=0
 		
 	#Set random connections to sets of units of the system
 	def random_wiring(self,mode='environment',std=1,offset=0):	#Set random values for h and J
@@ -77,7 +78,7 @@ class ising:
 			for j in inds2:
 				if i<j:
 					self.J[i,j]=(np.random.randn(1)+offset)*std
-		
+		self.J[self.Spos[:,None],self.Spos]=0
 		
 		
 	#Execute step of the Glauber algorithm to update the state of one unit
@@ -270,54 +271,57 @@ class ising:
 	def DynamicalCriticalGradient(self,T=None):
 		if T==None:
 			T=self.defaultT
-		dh=np.zeros((self.size))
-		dJ=np.zeros((self.size,self.size))
 		
-		msH=np.zeros(self.size)
-		mF=np.zeros(self.size)
-		mG=np.zeros(self.size)
+		msH=np.zeros(self.Asize)
+		mF=np.zeros(self.Asize)
+		mG=np.zeros(self.Asize)
 				
-		msh=np.zeros(self.size)
-		msFh=np.zeros(self.size)
-		msGh=np.zeros(self.size)
-		mdFh=np.zeros(self.size)
-		mdGh=np.zeros(self.size)
-		ms2Hh=np.zeros(self.size)
+		msh=np.zeros(self.Asize)
+		msFh=np.zeros(self.Asize)
+		msGh=np.zeros(self.Asize)
+		mdFh=np.zeros(self.Asize)
+		mdGh=np.zeros(self.Asize)
+		ms2Hh=np.zeros(self.Asize)
 		
-		msJ=np.zeros((self.size,self.size))
-		msFJ=np.zeros((self.size,self.size))
-		msGJ=np.zeros((self.size,self.size))
-		mdFJ=np.zeros((self.size,self.size))
-		mdGJ=np.zeros((self.size,self.size))
-		ms2HJ=np.zeros((self.size,self.size))
+		msJ=np.zeros((self.Asize,self.Asize))
+		msFJ=np.zeros((self.Asize,self.Asize))
+		msGJ=np.zeros((self.Asize,self.Asize))
+		mdFJ=np.zeros((self.Asize,self.Asize))
+		mdGJ=np.zeros((self.Asize,self.Asize))
+		ms2HJ=np.zeros((self.Asize,self.Asize))
 		
 		self.randomize_state()
 		# Main simulation loop:
 		samples=[]
 		for t in range(T):
 			self.SequentialUpdate()
-			H= self.h + np.dot(self.s,self.J)+ np.dot(self.J,self.s)
-			F = H*np.tanh(H)-np.log(2*np.cosh(H))
-			G = (H/np.cosh(H))**2 + self.s*H*F
-			dF = H/np.cosh(H)**2
-			dG = 2*H*(1-H*np.tanh(H))/np.cosh(H)**2 + self.s*F + self.s*H*dF
+			H= self.h[0:self.Asize] + np.dot(self.s[0:self.Asize],self.J[0:self.Asize,0:self.Asize])+ np.dot(self.J[0:self.Asize,0:self.Asize],self.s[0:self.Asize])
+#			for i in self.Spos:
+#				H[i]=0
+#				H[i]= np.dot(self.s[self.Asize:self.size],self.J[i,self.Asize:self.size])+ np.dot(self.J[self.Asize:self.size,i],self.s[self.Asize:self.size])
+#			print(H)
 			
-			msH+=self.s*H/float(T)
+			F = H*np.tanh(H)-np.log(2*np.cosh(H))
+			G = (H/np.cosh(H))**2 + self.s[0:self.Asize]*H*F
+			dF = H/np.cosh(H)**2
+			dG = 2*H*(1-H*np.tanh(H))/np.cosh(H)**2 + self.s[0:self.Asize]*F + self.s[0:self.Asize]*H*dF
+			
+			msH+=self.s[0:self.Asize]*H/float(T)
 			mF+=F/float(T)
 			mG+=G/float(T)
 			
 			
-			msh+=self.s/float(T)
-			msFh+=self.s*F/float(T)
-			msGh+=self.s*G/float(T)
+			msh+=self.s[0:self.Asize]/float(T)
+			msFh+=self.s[0:self.Asize]*F/float(T)
+			msGh+=self.s[0:self.Asize]*G/float(T)
 			mdFh+=dF/float(T)
 			mdGh+=dG/float(T)
 			ms2Hh+=H/float(T)
 			
-			for j in range(self.size):
-				msJ[j,:]+=self.s*self.s[j]/float(T)
-				msFJ[j,:]+=self.s*self.s[j]*F/float(T)
-				msGJ[j,:]+=self.s*self.s[j]*G/float(T)
+			for j in range(self.Asize):
+				msJ[j,:]+=self.s[0:self.Asize]*self.s[j]/float(T)
+				msFJ[j,:]+=self.s[0:self.Asize]*self.s[j]*F/float(T)
+				msGJ[j,:]+=self.s[0:self.Asize]*self.s[j]*G/float(T)
 				mdFJ[j,:]+=self.s[j]*dF/float(T)
 				mdGJ[j,:]+=self.s[j]*dG/float(T)
 				ms2HJ[j,:]+=self.s[j]*H/float(T)
@@ -325,14 +329,37 @@ class ising:
 		dh = mdGh + msGh - msh*mG - (msh+ms2Hh-msh*msH)*mF - msH*(mdFh+msFh-msh*mF)
 		dJ1 = mdGJ + msGJ - msJ*mG - (msJ+ms2HJ-msJ*msH)*mF - msH*(mdFJ+msFJ-msJ*mF)
 		
+		dJ=np.zeros((self.Asize,self.Asize))
+		dJ0=np.ones((self.Asize,self.Asize))
+		
+		dh[self.Spos]=0
+		for j in range(self.Asize):
+			for i in range(self.Asize):
+				if i in self.Spos:
+					dJ1[j,i]=0				#Remove wrong-way change in unidirectional couplings
+					dJ1[i,j]+=dJ1[i,j]		#Multiply by two change in unidirectional couplings
+#					dJ0[j,i]=0
+#					dJ0[i,j]+=dJ0[i,j]
+				if i==j:
+					dJ1[i,i]=0
+#					dJ0[i,i]=0
+#		print()
+#		print('.......')
+#		print(dJ1)
+#		print(dJ0)
+#		exit()
 
-		dJ=np.zeros((self.size,self.size))
-		for j in range(self.size):
-			for i in np.arange(self.size):
+#		print(dJ1)
+
+		for j in range(self.Asize):
+			for i in range(self.Asize):
 				if i>j:
 					dJ[j,i]+=dJ1[j,i]
 				elif j>i:
 					dJ[i,j]+=dJ1[j,i]
+					
+#		dh[self.Spos]=0
+#		dJ[self.Spos[:,None],self.Spos]=0
 		
 		self.HCl=mG-msH*mF
 		self.HC=np.sum(self.HCl[0:self.Asize])
