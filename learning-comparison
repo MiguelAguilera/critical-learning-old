@@ -27,19 +27,20 @@ Cin=C
 Cout=C
 offset=0.8
 
-x.random_fields(mode='environment',std=1)
-x.random_wiring(mode='environment',std=Amp/float(envsize),offset=offset)
-x.random_wiring(mode='sensors',std=Cin/float(envsize),offset=offset)
-x.random_wiring(mode='motors',std=Cout/float(len(motors)),offset=offset)
+#x.random_fields(mode='environment',std=1)
+#x.random_wiring(mode='environment',std=Amp/float(envsize),offset=offset)
+#x.random_wiring(mode='sensors',std=Cin/float(envsize),offset=offset)
+#x.random_wiring(mode='motors',std=Cout/float(len(motors)),offset=offset)
 
-x.random_fields(mode='agent',std=0.1)
-x.random_wiring(mode='agent',std=0.1)
+#x.random_fields(mode='agent',std=0.1)
+#x.random_wiring(mode='agent',std=0.1)
 
-#x.h[1]=np.random.randn(1)*0.1
-#x.J[0,1]=np.random.randn(1)*0.01
-#x.h[2]=-1
-#x.J[0,2]=1.5
-#x.J[1,2]=1.5
+SMcoupling=2.5
+x.h[1]=np.random.randn(1)*0.01
+x.J[0,1]=np.random.randn(1)*0.01
+x.h[2]=-1
+x.J[0,2]=SMcoupling
+x.J[1,2]=SMcoupling
 
 
 xc=ising(agentsize,envsize,sensors,motors)
