@@ -1,0 +1,38 @@
+#!/usr/bin/env python
+
+from embodied_ising import ising,bitfield
+import numpy as np
+from sys import argv
+from matplotlib import pyplot as plt
+
+if len(argv) < 8:
+    print("Usage: " + argv[0] + " <network size>" + " <number of sensors>" + " <environment size>" + " <gradient width>" + " <Number of iterations>"  + " <mode>"+ " <Number of repetitions>" )
+    exit(1)
+
+size=int(argv[1])
+Nsensors=int(argv[2])
+envsize=int(argv[3])
+envstd=int(argv[4])
+Iterations=int(argv[5])
+mode=argv[6]
+
+repetitions=int(argv[7])
+
+T=envsize*100
+
+for rep in range(repetitions):
+	I=ising(size,Nsensors,envsize,envstd=envstd)
+	I.random_fields(std=0.1)
+	I.J[0:Nsensors,Nsensors:size]=np.random.randn(Nsensors,size-Nsensors)*0.01
+	#x.random_wiring(std=0.1)
+	print(mode)
+	if mode=='critical':
+		I.CriticalLearning(Iterations,T,mode='dynamic')
+	elif mode=='predictive':
+		I.BoltzmannLearning(Iterations,T)
+	else:
+	    print("Usage: " + argv[0] + " <network size>" + " <number of sensors>" + " <environment size>" + " <gradient width>" + " <Number of iterations>"  + " <mode>" )
+	    print("<mode> has to be defined as 'critical' or 'predictive'")
+
+	filename='files/'+mode+'-model-size_'+str(size)+'-sensors_'+str(Nsensors)+'-envsize_'+str(envsize)+'-envstd_'+str(envstd)+'-Iterations_'+str(Iterations)+'-ind_'+str(rep)+'.npz'
+	np.savez(filename, J=I.J, h=I.h)
