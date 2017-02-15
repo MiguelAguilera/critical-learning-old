@@ -14,21 +14,23 @@ class ising:
 		
 		self.h=np.zeros(netsize)
 		self.J=np.zeros((netsize,netsize))
+		self.max_weights=4
+		
 		self.randomize_state()
 		
 		self.env = gym.make('MountainCar-v0')
+		self.env.min_position=-1.5*np.pi/3
+		self.env.goal_position=0.5*np.pi/3
+		self.env.max_speed=0.045
 		self.observation = self.env.reset()
 		self.randomize_position()
 		
 		self.Beta=1.0
 		self.defaultT=max(100,netsize*20)
 
-#		self.maxgradient=self.env.max_speed
-#		self.mingradient=-self.env.max_speed
+		self.Ssize1=int(np.floor(self.Ssize/2))	#size of first sensor
 		self.maxspeed=self.env.max_speed
-		self.maxgradient=1
-		self.mingradient=-1
-		self.sensorbins=np.linspace(self.mingradient,self.maxgradient,2**self.Ssize+1)
+		self.sensorbins=np.linspace(-1.01,1.01,2**(self.Ssize-self.Ssize1)+1)
 		self.Update(0)
 		
 
@@ -40,7 +42,12 @@ class ising:
 			return self.s[-self.Msize:]
 		elif mode=='sensors':
 			return self.s[0:self.Ssize]
-	
+		elif mode=='non-sensors':
+			return self.s[self.Ssize:]
+		elif mode=='hidden':
+			return self.s[self.Ssize:-self.Msize]
+			
+			
 	def get_state_index(self,mode='all'):
 		return bool2int(0.5*(self.get_state(mode)+1))
 			
@@ -50,44 +57,55 @@ class ising:
 
 	def randomize_position(self):
 		self.observation = self.env.reset()
-#		self.env.state=np.array([self.env.np_random.uniform(low=-0.8, high=-0.2), 0])
-#		self.observation = np.array(self.env.state)
+		self.env.state=np.array([self.env.np_random.uniform(low=self.env.min_position, high=self.env.goal_position), 0])
+
 	#Set random bias to sets of units of the system
-	def random_fields(self,std=1):
-		self.h[self.Ssize:]=np.random.randn(self.size-self.Ssize)*std		
+	def random_fields(self,max_weights=None):
+		if max_weights is None:
+			max_weights=self.max_weights
+		self.h[self.Ssize:]=max_weights*(np.random.rand(self.size-self.Ssize)*2-1)		
 		
 	#Set random connections to sets of units of the system
-	def random_wiring(self,std=1,offset=0):	#Set random values for h and J
+	def random_wiring(self,max_weights=None):	#Set random values for h and J
+		if max_weights is None:
+			max_weights=self.max_weights
 		for i in range(self.size):
 			for j in np.arange(i+1,self.size):
 				if i<j and (i>=self.Ssize or j>=self.Ssize):
-					self.J[i,j]=(np.random.randn(1)+offset)*std
+					self.J[i,j]=(np.random.randn(1)*2-1)*self.max_weights
 		
 	def Move(self):
-#		action=int((self.s[-2]+self.s[-1])/2+1)
-#		action=int((self.s[-1]+1))
 		self.previous_speed=self.observation[1]
+		self.previous_vspeed= self.observation[1]*3*np.cos(3*self.observation[0])
 		action=int(np.digitize(np.sum(self.s[-self.Msize:])/self.Msize,[-1/3,1/3,1.1]))
-#		print(action,self.env.action_space.sample())
 		observation, reward, done, info = self.env.step(action)
-		if done:
-			observation = self.env.reset()
-		self.observation=observation
+		if (self.env.state[0]>=self.env.goal_position and self.env.state[1]>0): 
+			self.env.state = (self.env.goal_position,0)  #Bounce when end of world is reached
+#		if done:
+#			observation = self.env.reset()
+		self.observation=self.env.state
+		self.position=self.observation[0]
+		self.height=np.sin(3*self.position)
+
 		self.speed=self.observation[1]
-		self.acceleration=(self.speed-self.previous_speed)/0.004
-		self.acceleration=np.median([-0.99,self.acceleration,0.99])
+		self.vspeed=self.speed*3*np.cos(3*self.position)
+		self.absspeed=np.sqrt(self.speed**2+self.vspeed**2)
 		
+		self.acceleration=np.clip((self.speed-self.previous_speed)/0.0035,-1,1)
+		self.vacceleration=np.clip((self.vspeed-self.previous_vspeed)/0.0035/3/2,-1,1)
+
 	def UpdateSensors(self):
-#		self.s[0:self.Ssize]= 2*bitfield(np.digitize(self.observation[1],self.sensorbins)-1,self.Ssize)-1
-#	self.s[0:self.Ssize]= 2*bitfield(np.digitize(self.observation[1]/self.maxspeed,self.sensorbins)-1,self.Ssize)-1
-		self.s[0:self.Ssize]= 2*bitfield(np.digitize(self.acceleration,self.sensorbins)-1,self.Ssize)-1
+		self.s[self.Ssize1:self.Ssize]= 2*bitfield(np.digitize(self.vacceleration,self.sensorbins)-1,self.Ssize-self.Ssize1)-1
+		self.s[0:self.Ssize1]= 2*bitfield(np.digitize(self.acceleration,self.sensorbins)-1,self.Ssize1)-1
+
 		
 	#Execute step of the Glauber algorithm to update the state of one unit
 	def GlauberStep(self,i=None):			
 		if i is None:
 			i = np.random.randint(self.size)
 		eDiff = self.deltaE(i)
-		if np.random.rand(1) < 1.0/(1.0+np.exp(self.Beta*eDiff)):    # Glauber
+#		if np.random.rand(1) < 1.0/(1.0+np.exp(self.Beta*eDiff)):    # Glauber
+		if self.Beta*eDiff < np.log(1.0/np.random.rand(1)-1):    # Glauber
 			self.s[i] = -self.s[i]
 			
 	#Compute energy difference between two states with a flip of spin i	
@@ -124,141 +142,6 @@ class ising:
 		for i in np.random.permutation(self.size):
 			self.GlauberStep(i)
 
-	#Get mean and correlations from simuations of the positive ('embodied') phase
-	def observables_positive(self,T=None):		
-		if T==None:
-			T=self.defaultT
-		self.mpos=np.zeros((self.size))
-		self.Cpos=np.zeros((self.size,self.size))
-		self.PVpos=np.ones(2**self.Ssize)
-			
-		self.randomize_state()
-		self.randomize_position()
-		for t in range(T):
-			self.SequentialUpdate()
-			
-			n=int(bool2int(0.5*(self.s[0:self.Ssize]+1)))
-			self.PVpos[n]+=1.0
-			
-			self.mpos+=self.s/float(T)
-			for i in range(self.size):
-				self.Cpos[i,i+1:]+=self.s[i]*self.s[i+1:]/float(T)
-					
-		for i in range(self.size):
-			for j in np.arange(i+1,self.size):
-				self.Cpos[i,j]-=self.mpos[i]*self.mpos[j]	
-		self.PVpos/=float(np.sum(self.PVpos))
-				
-	
-	#Get mean and correlations from simuations of the negative ('dreaming') phase
-	def observables_negative(self,T=None):		
-		if T==None:
-			T=self.defaultT
-		self.mneg=np.zeros((self.size))
-		self.Cneg=np.zeros((self.size,self.size))
-		self.PVneg=np.ones(2**self.Ssize)
-				
-		self.randomize_state()
-		self.randomize_position()
-		for t in range(T):
-			self.SequentialUpdateDreaming()
-			
-			n=int(bool2int(0.5*(self.s[0:self.Ssize]+1)))
-			self.PVneg[n]+=1.0
-			
-			self.mneg+=self.s/float(T)
-			for i in range(self.size):
-				self.Cneg[i,i+1:]+=self.s[i]*self.s[i+1:]/float(T)
-					
-		for i in range(self.size):
-			for j in np.arange(i+1,self.size):
-				self.Cneg[i,j]-=self.mneg[i]*self.mneg[j]	
-		self.PVneg/=float(np.sum(self.PVneg))
-	
-	#Boltzmann learning Algorithm for learning the probability distribution of sensor units
-	def BoltzmannLearning(self,Iterations,T=None):	
-		if T==None:
-			T=self.defaultT
-		u=0.04
-		count=0
-		
-		Vmax=5
-		self.J[0:self.Ssize,self.Ssize:self.size]=Vmax*(-1+2*np.random.rand(self.Ssize,self.size-self.Ssize))
-		self.observables_positive()
-		self.observables_negative()
-		fit = KL(self.PVpos,self.PVneg)
-		print(count,fit)
-		# Main simulation loop:
-		for t in range(Iterations):
-			count+=1
-			dh=u*(self.mpos-self.mneg)
-			dJ=u*(self.Cpos-self.Cneg)
-			
-			dh[0:self.Ssize]=0
-			dJ[0:self.Ssize,0:self.Ssize]=0
-			self.h+=dh
-			self.J+=dJ
-			
-			
-			for i in range(self.size):
-				if np.abs(self.h[i])>Vmax:
-					self.h[i]=Vmax*np.sign(self.h[i])
-				for j in np.arange(i+1,self.size):
-					if np.abs(self.J[i,j])>Vmax:
-						self.J[i,j]=Vmax*np.sign(self.J[i,j])
-			
-			self.observables_positive(T)
-			self.observables_negative(T)
-			fit = KL(self.PVpos,self.PVneg)
-			if count%10==0:
-				print(count,fit,np.max(np.abs(self.J)))
-			
-			
-			
-	#Critical Learning Algorithm for poising the system in a critical state	
-	def CriticalGradient(self,T):
-	
-		dh=np.zeros((self.size))
-		dJ=np.zeros((self.size,self.size))
-	
-		E=0
-		E2=0
-		
-		Esm=np.zeros(self.size)
-		E2sm=np.zeros(self.size)
-		m=np.zeros(self.size)
-		
-		EsC=np.zeros((self.size,self.size))
-		E2sC=np.zeros((self.size,self.size))
-		C=np.zeros((self.size,self.size))
-		
-		self.randomize_state()
-		self.randomize_position()
-		# Main simulation loop:
-		samples=[]
-		for t in range(T):
-			for i in range(self.size):
-				self.Update()
-			n=bool2int((self.s+1)/2)
-			Es=-(np.dot(self.s,self.h) + np.dot(np.dot(self.s,self.J),self.s))
-			E+=Es/T
-			E2+=Es**2/T
-			for i in range(self.size):
-				m[i]+=self.s[i]/float(T)
-				Esm[i]+=Es*self.s[i]/float(T)
-				E2sm[i]+=Es**2*self.s[i]/float(T)
-				for j in np.arange(i+1,self.size):
-					C[i,j]+=self.s[i]*self.s[j]/float(T)
-					EsC[i,j]+=Es*self.s[i]*self.s[j]/float(T)
-					E2sC[i,j]+=Es**2*self.s[i]*self.s[j]/float(T)
-		
-		dh=m*(2*E+2*E**2-E2)-2*Esm*(1+E)+E2sm
-		dJ=C*(2*E+2*E**2-E2)-2*EsC*(1+E)+E2sC
-		
-		self.HC=(E2-E**2)/float(self.size)
-		
-		return dh,dJ
-		
 	#Dynamical Critical Learning Algorithm for poising units in a critical state
 	def DynamicalCriticalGradient(self,T=None):
 		if T==None:
@@ -282,12 +165,13 @@ class ising:
 		mdGJ=np.zeros((self.size,self.size))
 		ms2HJ=np.zeros((self.size,self.size))
 		
-		self.randomize_state()
-		self.randomize_position()
 		# Main simulation loop:
+		self.x=np.zeros(T)
 		samples=[]
 		for t in range(T):
 			self.SequentialUpdate()
+			self.x[t]=self.position
+#			self.env.render()
 			H= self.h + np.dot(self.s,self.J)+ np.dot(self.J,self.s)
 			F = H*np.tanh(H)-np.log(2*np.cosh(H))
 			G = (H/np.cosh(H))**2 + self.s*H*F
@@ -338,16 +222,12 @@ class ising:
 		self.HCl=mG-msH*mF
 		self.HC=np.sum(self.HCl[self.Ssize:])
 		
-#		dh[0:self.Ssize]=0
-##		dJ[0:self.Ssize,0:self.Ssize]=0
-#		for i in range(self.Ssize):
-#			self.h[i]=-0.5*np.log((1-msh[i])/(1+msh[i]))
 		
 		return dh,dJ
 		
 		
 	def CriticalLearning(self,Iterations,T=None,mode='dynamic'):	
-		u=0.04
+		u=0.02
 		count=0
 		if mode=='static':
 			dh,dJ=self.CriticalGradient(T)
@@ -355,13 +235,16 @@ class ising:
 			dh,dJ=self.DynamicalCriticalGradient(T)
 			
 		fit=self.HC
-		print(count,fit)
+		print(count,fit,np.max(np.abs(self.J)),np.min(self.x+0.5)/np.pi*3,np.max(self.x+0.5)/np.pi*3)
+		self.l2=0.1
 		for i in range(Iterations):
 			count+=1
-			self.h+=u*dh
-			self.J+=u*dJ
+			self.h+=u*(dh - self.l2*self.h)
+			self.J+=u*(dJ - self.l2*self.J)
 			
-			Vmax=5
+#			self.randomize_state()
+#			self.randomize_position()
+			Vmax=self.max_weights
 			for i in range(self.size):
 				if np.abs(self.h[i])>Vmax:
 					self.h[i]=Vmax*np.sign(self.h[i])
@@ -375,15 +258,14 @@ class ising:
 				dh,dJ=self.DynamicalCriticalGradient(T)
 			fit=self.HC
 			
-			if count%10==0:
-				print(count,fit,np.max(np.abs(self.J)))
+			if count%1==0:
+				print(count,fit,np.max(np.abs(self.J)),np.min(self.x[int(T/4):]+0.5)/np.pi*3,np.max(self.x[int(T/4):]+0.5)/np.pi*3)
 			
 
 #Transform bool array into positive integer
 def bool2int(x):				
     y = 0
     for i,j in enumerate(np.array(x)[::-1]):
-#        y += j<<i
         y += j*2**i
     return int(y)
     
