@@ -6,30 +6,33 @@ import matplotlib.pyplot as plt
 from infoflow import MI,TE,Entropy
 
 
-size=8
-Nsensors=4
-Nmotors=1
+size=16
+Nsensors=6
+Nmotors=2
 visualize=True
+#visualize=False
 
 I=ising(size,Nsensors,Nmotors)
 
-I.random_fields(std=0.01)
-I.J[0:Nsensors,Nsensors:size]=np.random.randn(Nsensors,size-Nsensors)*0.01
+I.random_fields(0.01)
+I.J[0:Nsensors,Nsensors:size]=(np.random.rand(Nsensors,size-Nsensors)*2-1)*0.01
 
-Iterations=100
-T=1000
+Iterations=200
+T=5000
 
 I.CriticalLearning(Iterations,T,mode='dynamic')
-
+#I.random_wiring(0.5)
 
 T=40000
 p=np.zeros(T)
 s=np.zeros(T)
 m=np.zeros(T)
 a=np.zeros(T)
+av=np.zeros(T)
 acc=np.zeros(T)
 P=np.zeros(2**size)
 t=0
+I.randomize_state()
 I.randomize_position()
 while(t<T):
 	for i in np.random.permutation(I.size):
@@ -37,7 +40,8 @@ while(t<T):
 			I.Update(i)
 			s[t]=I.get_state_index('sensors')
 			p[t]=I.observation[0]
-			a[t]=I.observation[1]
+			a[t]=I.acceleration
+			av[t]=I.vacceleration
 			m[t]=I.get_state_index('motors')
 			n=I.get_state_index()
 			P[n]+=1
@@ -48,8 +52,12 @@ while(t<T):
 P/=np.sum(P)
 
 plt.figure()
-plt.hist(a,20)
-
+plt.plot(p)
+plt.figure()
+plt.plot(a)
+plt.figure()
+plt.plot(av)
+#plt.show()
 
 
 Tsub=2000
@@ -99,6 +107,5 @@ plt.semilogx(rs,TEsm,'--b',linewidth=1.5,label='s->m')
 plt.legend()
 
 plt.show()
-
 
 
