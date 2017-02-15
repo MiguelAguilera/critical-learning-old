@@ -21,7 +21,7 @@ repetitions=int(argv[7])
 
 for rep in range(repetitions):
 	I=ising(size,Nsensors,Nmotors)
-	I.random_fields(std=0.01)
+	I.random_fields(0.01)
 	I.J[0:Nsensors,Nsensors:size]=np.random.randn(Nsensors,size-Nsensors)*0.01
 	print(mode)
 	if mode=='critical':
