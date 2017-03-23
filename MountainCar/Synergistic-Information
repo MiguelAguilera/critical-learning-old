@@ -1,0 +1,73 @@
+#!/usr/bin/env python
+
+from embodied_ising import ising,bool2int,bitfield
+import numpy as np
+import matplotlib.pyplot as plt
+from infoflow import MI,Imin,TE,Entropy,ConditionalEntropy,Imin
+from itertools import combinations
+
+size=12
+Nsensors=6
+Nmotors=2
+
+
+Iterations=1000
+T=5000
+
+mode='critical'
+
+ind=0
+Esize=6
+for ind in range(10):
+	Nbetas=21
+	betas=10**np.linspace(-1,1,Nbetas)
+
+	rs=np.unique(np.round(2**np.arange(0,13.5,0.5)).astype(int))
+	
+	IT=np.zeros((size,size,Nbetas))
+
+
+	Ic1=np.zeros(Nbetas)
+	Ic2=np.zeros(Nbetas)
+	Ic3=np.zeros(Nbetas)
+	I3=np.zeros(Nbetas)
+
+	Ss=np.zeros(Nbetas)
+	Sm=np.zeros(Nbetas)
+	Sh=np.zeros(Nbetas)
+	
+	print(ind)	
+	for bind in range(Nbetas):
+		
+		beta=betas[bind]
+	
+		filename='/home/maguilera/Desktop/MountainCar-data/series-temp/series-'+mode+'-model-size_'+str(size)+'-sensors_'+str(Nsensors)+'-motors_'+str(Nmotors)+'-T_'+str(T)+'-Iterations_'+str(Iterations)+'-ind_'+str(ind)+'-beta_'+str(beta)+'.npz'
+		data=np.load(filename)
+		
+		n=data['s']
+		
+		steps=int(len(n)*1)
+		s=np.zeros(steps)
+		m=np.zeros(steps)
+		h=np.zeros(steps)
+		spins=np.zeros((size,steps))
+
+
+		for i in range(steps):
+			spin=bitfield(n[i],size)
+			spins[:,i]=spin
+			
+			s[i]=bool2int(spin[0:Nsensors])
+			m[i]=bool2int(spin[-Nmotors:])
+			h[i]=bool2int(spin[Nsensors:-Nmotors])
+			
+
+		Ss[bind]=MI(s,m+h*2**Nmotors) - MI(s,m) - MI(s,h) + Imin(s,h,m)
+		Sm[bind]=MI(m,s+h*2**Nsensors) - MI(m,s) - MI(m,h) + Imin(m,s,h)
+		Sh[bind]=MI(h,m+s*2**Nmotors) - MI(h,s) - MI(h,m) + Imin(h,s,m)
+		I3[bind]=MI(m,h)-Ic1[bind]
+		print(beta,Ss[bind],Sm[bind],Sh[bind])
+		
+	filename='series-temp/MI-'+mode+'-model-size_'+str(size)+'-sensors_'+str(Nsensors)+'-motors_'+str(Nmotors)+'-T_'+str(T)+'-Iterations_'+str(Iterations)+'-ind_'+str(ind)+'.npz'
+	np.savez(filename,betas=betas,Ic1=Ic1,Ic2=Ic2,Ic3=Ic3,I3=I3,Ss=Ss,Sm=Sm,Sh=Sh)
+#		
