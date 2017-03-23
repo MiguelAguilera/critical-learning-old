@@ -62,7 +62,7 @@ def MI1(x,y,m):
 					I+=Pxy[i,j]*np.log(Pxy[i,j]/(Px[i]*Py[j]))
 	return I/np.log(m)
 	
-def TE1(x,y,m,r):
+def TE1(x,y,m,r=1):
 
 	L=min([len(x),len(y)])-m-r+1
 	x1=permdist(x[0:L],m);
@@ -95,6 +95,7 @@ def uniquelist(x):
 	for i in range(len(x)):
 		x1[i]= np.where(vals==x[i])[0][0]
 	return x1
+	
 def Entropy(x):
 
 	xu=uniquelist(x)
@@ -126,6 +127,35 @@ def MI(x,y):
 			if Pxy[i,j]>0:
 				MI+=Pxy[i,j]*np.log(Pxy[i,j]/(Px[i]*Py[j]))
 	return MI
+	
+def Imin(x,y,z):
+
+	xu=uniquelist(x)
+	yu=uniquelist(y)
+	zu=uniquelist(z)
+	binsx=int(max(x)-min(x)+1)
+	binsy=int(max(y)-min(y)+1)
+	binsz=int(max(z)-min(z)+1)
+	
+	Px = pdf(xu,binsx)
+	Py = pdf(yu,binsy)
+	Pz = pdf(zu,binsz)
+	Pxy = pdf([xu,yu],(binsx,binsy))
+	Pxz = pdf([xu,zu],(binsx,binsz))
+	
+	I=0.0
+	for i in range(binsx):
+		Ixy=0
+		Ixz=0
+		for j in range(binsy):
+			if Pxy[i,j]>0:
+				Ixy+=Pxy[i,j]*np.log(Pxy[i,j]/(Px[i]*Py[j]))
+		for j in range(binsz):
+			if Pxz[i,j]>0:
+				Ixz+=Pxz[i,j]*np.log(Pxz[i,j]/(Px[i]*Pz[j]))
+		I+=min(Ixy,Ixz)
+				
+	return I
 
 def ConditionalEntropy(x,y):
 
@@ -145,29 +175,45 @@ def ConditionalEntropy(x,y):
 				CE+=Pxy[i,j]*np.log(Py[j]/(Pxy[i,j]))
 	return CE
 
-def TE(x,y,r):
+def TE(x,y,r=1,d=1,l=1):
 
 	xu=uniquelist(x)
 	yu=uniquelist(y)
-	L=min([len(x),len(y)])-r
-	x1=xu[0:L];
-	y1=yu[0:L];
-	y2=yu[r:L+r];
+	nx=len(np.unique(xu))
+	ny=len(np.unique(yu))
+	L=min([len(x),len(y)])-r-(d-1)*l
 	
-	binsx=int(max(x)-min(x)+1)
-	binsy=int(max(y)-min(y)+1)
+	x1=xu[(d-1)*l:L+(d-1)*l]
+	y1=yu[(d-1)*l:L+(d-1)*l]
+	for i in range(1,d):
+		x1=x1 + xu[(d-1)*l-i:L+(d-1)*l-i]
+		y1=y1 + ny*yu[(d-1)*l-i:L+(d-1)*l-i]
+	y2=yu[r+(d-1)*l:L+r+(d-1)*l]
+	
+	x1=uniquelist(x1)
+	y1=uniquelist(y1)
+	
+	binsx1=int(max(x1)-min(x1)+1)
+	binsy1=int(max(y1)-min(y1)+1)
+	binsy2=int(max(y2)-min(y2)+1)
+	
+#	print(binsx1,binsy1,binsy2)
+#	print(x1)
+#	print(y1)
+#	print(y2)
 
-	Px1y1y2 = pdf([x1,y1,y2],(binsx,binsy,binsy))
-	Py1 = pdf(y1,binsy)
-	Py1y2 = pdf([y1,y2],(binsy,binsy))
-	Px1y1 = pdf([x1,y1],(binsx,binsy))
-	
+	Px1y1y2 = pdf([x1,y1,y2],(binsx1,binsy1,binsy2))
+	Py1 = pdf(y1,binsy1)
+	Py1y2 = pdf([y1,y2],(binsy1,binsy2))
+	Px1y1 = pdf([x1,y1],(binsx1,binsy1))
 	
 	TE=0.0
-	for i in range(binsx):
-		for j in range(binsy):
-			for k in range(binsy):
+	for i in range(binsx1):
+		for j in range(binsy1):
+			for k in range(binsy2):
 				if Px1y1y2[i,j,k]>0:
+#					print(i,j,k)
+#					print(Px1y1y2[i,j,k],np.log(Px1y1y2[i,j,k]*Py1[j]/(Py1y2[j,k]*Px1y1[i,j])))
 					TE+=Px1y1y2[i,j,k]*np.log(Px1y1y2[i,j,k]*Py1[j]/(Py1y2[j,k]*Px1y1[i,j]))
 	return TE
 	
